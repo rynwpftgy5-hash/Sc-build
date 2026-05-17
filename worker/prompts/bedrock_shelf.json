@@ -1,0 +1,348 @@
+{
+  "$schema": "./bedrock_shelf.schema.json",
+  "_doc": "§8.4a.21 W3 Bedrock shelf. Authoritative-source lookup for S2 source discovery. Per-domain list of organizations whose primary publications the LLM should weight heavily over blog posts / opinion / unverified web content. Curation pass: Campbell + Opus joint at W3.",
+  "_revision": "v0.2 — Campbell + Opus joint curation pass landed 2026-05-17 (§8.4a.21 W3 RATIFIED). DSCA disposition: keep with scope note demoting strategic-framing weight. Christensen disposition (analog_seed_bibliography.json): keep with contested flag, no mandatory_disclosure (Campbell 2026-05-17). Optional `scope` field added per Bedrock entry, used on DSCA for v0.2.",
+  "schema_version": 1,
+  "domains": {
+    "Economics": {
+      "description": "Finance, economics, accounting, capital markets. Used for module topics like quarterly earnings statements, monetary policy, debt structures, etc.",
+      "sources": [
+        {
+          "name": "SEC",
+          "full_name": "U.S. Securities and Exchange Commission",
+          "url": "https://www.sec.gov",
+          "source_type": "regulator",
+          "trust": "primary",
+          "url_patterns": ["sec.gov/Archives/edgar/", "sec.gov/news/", "sec.gov/rules/"],
+          "notes": "Primary source for filings (10-K, 10-Q, 8-K), staff guidance, enforcement actions."
+        },
+        {
+          "name": "FASB",
+          "full_name": "Financial Accounting Standards Board",
+          "url": "https://www.fasb.org",
+          "source_type": "standards_body",
+          "trust": "primary",
+          "url_patterns": ["fasb.org/standards/", "fasb.org/jsp/FASB/"],
+          "notes": "Authoritative for U.S. GAAP."
+        },
+        {
+          "name": "CFA Institute",
+          "full_name": "CFA Institute",
+          "url": "https://www.cfainstitute.org",
+          "source_type": "professional_body",
+          "trust": "high",
+          "url_patterns": ["cfainstitute.org/research/"],
+          "notes": "Curriculum + research publications; framework definitions."
+        },
+        {
+          "name": "IFRS",
+          "full_name": "International Financial Reporting Standards Foundation",
+          "url": "https://www.ifrs.org",
+          "source_type": "standards_body",
+          "trust": "primary",
+          "url_patterns": ["ifrs.org/issued-standards/"],
+          "notes": "International accounting standards (non-U.S. comparator to FASB)."
+        },
+        {
+          "name": "FRED",
+          "full_name": "Federal Reserve Economic Data",
+          "url": "https://fred.stlouisfed.org",
+          "source_type": "data_repository",
+          "trust": "primary",
+          "url_patterns": ["fred.stlouisfed.org/series/"],
+          "notes": "Time-series macroeconomic data from the St. Louis Fed."
+        },
+        {
+          "name": "BEA",
+          "full_name": "U.S. Bureau of Economic Analysis",
+          "url": "https://www.bea.gov",
+          "source_type": "government_official",
+          "trust": "primary",
+          "url_patterns": ["bea.gov/data/", "bea.gov/news/"],
+          "notes": "Industry economic accounts; satellite accounts including the space economy."
+        },
+        {
+          "name": "BLS",
+          "full_name": "U.S. Bureau of Labor Statistics",
+          "url": "https://www.bls.gov",
+          "source_type": "government_official",
+          "trust": "primary",
+          "url_patterns": ["bls.gov/oes/", "bls.gov/news.release/", "bls.gov/lpc/"],
+          "notes": "Wages / employment / productivity statistics."
+        },
+        {
+          "name": "NBER",
+          "full_name": "National Bureau of Economic Research",
+          "url": "https://www.nber.org",
+          "source_type": "research_institute",
+          "trust": "high",
+          "url_patterns": ["nber.org/papers/"],
+          "notes": "Peer-reviewed economics working papers."
+        },
+        {
+          "name": "OECD",
+          "full_name": "Organisation for Economic Co-operation and Development",
+          "url": "https://www.oecd.org",
+          "source_type": "international_org",
+          "trust": "primary",
+          "url_patterns": ["oecd.org/sti/", "oecd-ilibrary.org/", "oecd.org/space/"],
+          "notes": "International comparisons; OECD Space Economy reports specifically."
+        },
+        {
+          "name": "IMF",
+          "full_name": "International Monetary Fund",
+          "url": "https://www.imf.org",
+          "source_type": "international_org",
+          "trust": "primary",
+          "url_patterns": ["imf.org/en/Publications/"],
+          "notes": "Macroeconomic data + working papers; country surveillance reports."
+        },
+        {
+          "name": "World Bank",
+          "full_name": "World Bank Group",
+          "url": "https://www.worldbank.org",
+          "source_type": "international_org",
+          "trust": "primary",
+          "url_patterns": ["worldbank.org/en/research/", "documents.worldbank.org/"],
+          "notes": "Development-economics framing; country economic data."
+        },
+        {
+          "name": "RAND",
+          "full_name": "RAND Corporation",
+          "url": "https://www.rand.org",
+          "source_type": "think_tank",
+          "trust": "high",
+          "url_patterns": ["rand.org/pubs/"],
+          "notes": "Defense and economics research. Cross-listed under Policy + Technology."
+        }
+      ]
+    },
+    "Policy": {
+      "description": "Defense policy, national security, space policy, regulatory frameworks.",
+      "sources": [
+        {
+          "name": "DoD doctrine",
+          "full_name": "U.S. Department of Defense — Joint Doctrine + Joint Publications",
+          "url": "https://www.jcs.mil/Doctrine/",
+          "source_type": "government_official",
+          "trust": "primary",
+          "url_patterns": ["jcs.mil/Doctrine/", "defense.gov/"],
+          "notes": "Joint Publications (JP 3-14 Space Operations, JP 3-12 Cyberspace, etc.) are doctrinal source-of-truth for U.S. military space concepts."
+        },
+        {
+          "name": "GAO",
+          "full_name": "U.S. Government Accountability Office",
+          "url": "https://www.gao.gov",
+          "source_type": "government_oversight",
+          "trust": "primary",
+          "url_patterns": ["gao.gov/products/"],
+          "notes": "Audit + evaluation reports on defense/space programs; widely cited."
+        },
+        {
+          "name": "RAND",
+          "full_name": "RAND Corporation",
+          "url": "https://www.rand.org",
+          "source_type": "think_tank",
+          "trust": "high",
+          "url_patterns": ["rand.org/pubs/"],
+          "notes": "Defense-focused FFRDC research; Project Air Force, NDRI."
+        },
+        {
+          "name": "NSSP",
+          "full_name": "U.S. National Space Strategy / National Space Policy documents",
+          "url": "https://www.whitehouse.gov/space-policy/",
+          "source_type": "government_official",
+          "trust": "primary",
+          "url_patterns": ["whitehouse.gov/", "spacepolicyonline.com/policies/"],
+          "notes": "Executive-level space policy directives (SPDs, national strategy docs)."
+        },
+        {
+          "name": "CRS",
+          "full_name": "Congressional Research Service",
+          "url": "https://crsreports.congress.gov",
+          "source_type": "government_oversight",
+          "trust": "primary",
+          "url_patterns": ["crsreports.congress.gov/product/pdf/"],
+          "notes": "Non-partisan analysis for Congress; excellent backgrounders on defense/space topics."
+        },
+        {
+          "name": "State PM Affairs",
+          "full_name": "U.S. State Department — Bureau of Political-Military Affairs",
+          "url": "https://www.state.gov/bureaus-offices/under-secretary-for-arms-control-and-international-security-affairs/bureau-of-political-military-affairs/",
+          "source_type": "government_official",
+          "trust": "primary",
+          "url_patterns": ["state.gov/bureaus-offices/under-secretary-for-arms-control-and-international-security-affairs/bureau-of-political-military-affairs/", "state.gov/key-topics-bureau-of-political-military-affairs/"],
+          "notes": "Partner-country engagement + security-assistance policy."
+        },
+        {
+          "name": "USSF/USSPACECOM doctrine",
+          "full_name": "U.S. Space Force + U.S. Space Command — Service-Specific Doctrine and Strategic Guidance",
+          "url": "https://www.spaceforce.mil",
+          "source_type": "government_official",
+          "trust": "primary",
+          "url_patterns": ["spaceforce.mil/News/", "spaceforce.mil/About-Us/", "spacecom.mil/Library/", "spacecom.mil/News/"],
+          "notes": "Service-specific doctrine + strategy distinct from joint DoD doctrine."
+        },
+        {
+          "name": "Aerospace Corporation",
+          "full_name": "The Aerospace Corporation (FFRDC)",
+          "url": "https://aerospace.org",
+          "source_type": "ffrdc",
+          "trust": "primary",
+          "url_patterns": ["aerospace.org/paper/", "csps.aerospace.org/"],
+          "notes": "Federally funded R&D center; technical-policy bridge documents; Center for Space Policy & Strategy."
+        },
+        {
+          "name": "CSIS Aerospace Security Project",
+          "full_name": "CSIS Aerospace Security Project",
+          "url": "https://aerospace.csis.org",
+          "source_type": "think_tank",
+          "trust": "high",
+          "url_patterns": ["aerospace.csis.org/", "csis.org/programs/aerospace-security-project"],
+          "notes": "Heavily cited, methodologically transparent space-security analysis."
+        },
+        {
+          "name": "NDU Press",
+          "full_name": "National Defense University Press — Joint Forces Quarterly, Strategic Studies Quarterly, Air & Space Power Journal (now Æther)",
+          "url": "https://ndupress.ndu.edu",
+          "source_type": "academic_military",
+          "trust": "high",
+          "url_patterns": ["ndupress.ndu.edu/Journals/", "airuniversity.af.edu/AUPress/", "airuniversity.af.edu/AetherJournal/"],
+          "notes": "Peer-reviewed military-academic journals."
+        },
+        {
+          "name": "DSCA",
+          "full_name": "U.S. Defense Security Cooperation Agency",
+          "url": "https://www.dsca.mil",
+          "source_type": "government_official",
+          "trust": "high",
+          "url_patterns": ["dsca.mil/", "samm.dsca.mil/"],
+          "scope": "procedural / technical-process detail only; not strategic-framing",
+          "notes": "Authoritative for FMS procedural / regulatory / technical-process detail (DSCA 5105.38-M / SAMM, etc.). NOT a strategic-framing source — DSCA is often cited as exemplifying what is wrong with FMS (risk-averse, process-bound, solves all problems by adding process). Use for 'how an FMS case progresses procedurally' questions; do not use for 'what is wrong with FMS as an institution' framing. Listed last in Policy to reflect ranking demotion."
+        }
+      ]
+    },
+    "Technology": {
+      "description": "Space industry technical standards, engineering, technology development.",
+      "sources": [
+        {
+          "name": "AIAA",
+          "full_name": "American Institute of Aeronautics and Astronautics",
+          "url": "https://www.aiaa.org",
+          "source_type": "professional_body",
+          "trust": "high",
+          "url_patterns": ["arc.aiaa.org/"],
+          "notes": "Peer-reviewed journals + conference papers in aerospace engineering."
+        },
+        {
+          "name": "ITU",
+          "full_name": "International Telecommunication Union",
+          "url": "https://www.itu.int",
+          "source_type": "standards_body",
+          "trust": "primary",
+          "url_patterns": ["itu.int/rec/", "itu.int/pub/"],
+          "notes": "Spectrum + orbital slot allocation authority; ITU-R recommendations."
+        },
+        {
+          "name": "FCC",
+          "full_name": "U.S. Federal Communications Commission",
+          "url": "https://www.fcc.gov",
+          "source_type": "regulator",
+          "trust": "primary",
+          "url_patterns": ["fcc.gov/document/", "docs.fcc.gov/"],
+          "notes": "U.S. satellite licensing + spectrum allocation; rule-makings and orders."
+        },
+        {
+          "name": "NASA technical reports",
+          "full_name": "NASA Technical Reports Server (NTRS)",
+          "url": "https://ntrs.nasa.gov",
+          "source_type": "government_official",
+          "trust": "primary",
+          "url_patterns": ["ntrs.nasa.gov/citations/", "ntrs.nasa.gov/api/citations/"],
+          "notes": "Engineering papers, test reports, mission documentation from NASA programs."
+        },
+        {
+          "name": "IEEE",
+          "full_name": "Institute of Electrical and Electronics Engineers",
+          "url": "https://www.ieee.org",
+          "source_type": "professional_body",
+          "trust": "high",
+          "url_patterns": ["ieeexplore.ieee.org/", "standards.ieee.org/"],
+          "notes": "Peer-reviewed engineering literature broadly; standards for communications + signal processing."
+        },
+        {
+          "name": "ESA technical reports",
+          "full_name": "European Space Agency — Technical Reports and Publications",
+          "url": "https://www.esa.int",
+          "source_type": "government_official",
+          "trust": "primary",
+          "url_patterns": ["esa.int/About_Us/ESA_Publications/", "esamultimedia.esa.int/docs/", "sci.esa.int/web/"],
+          "notes": "European equivalent of NASA NTRS; mission docs + technical bulletins."
+        },
+        {
+          "name": "NIST",
+          "full_name": "U.S. National Institute of Standards and Technology",
+          "url": "https://www.nist.gov",
+          "source_type": "standards_body",
+          "trust": "primary",
+          "url_patterns": ["nist.gov/publications/", "csrc.nist.gov/publications/"],
+          "notes": "Cybersecurity standards relevant for space systems (SP 800 series, FIPS)."
+        },
+        {
+          "name": "USSF SDA",
+          "full_name": "U.S. Space Force — Space Development Agency Public Documentation",
+          "url": "https://www.sda.mil",
+          "source_type": "government_official",
+          "trust": "primary",
+          "url_patterns": ["sda.mil/", "sda.mil/news-and-publications/"],
+          "notes": "Live programmatic source for SDA tranches (PWSA Transport + Tracking layers)."
+        },
+        {
+          "name": "IADC",
+          "full_name": "Inter-Agency Space Debris Coordination Committee",
+          "url": "https://www.iadc-home.org",
+          "source_type": "international_org",
+          "trust": "primary",
+          "url_patterns": ["iadc-home.org/documents_public/"],
+          "notes": "Debris / sustainability coordination across major space agencies."
+        },
+        {
+          "name": "COSPAR",
+          "full_name": "Committee on Space Research",
+          "url": "https://cosparhq.cnes.fr",
+          "source_type": "international_org",
+          "trust": "high",
+          "url_patterns": ["cosparhq.cnes.fr/", "cosparscienceassembly.org/"],
+          "notes": "International space-research coordination; planetary protection guidelines."
+        },
+        {
+          "name": "RAND",
+          "full_name": "RAND Corporation",
+          "url": "https://www.rand.org",
+          "source_type": "think_tank",
+          "trust": "high",
+          "url_patterns": ["rand.org/pubs/"],
+          "notes": "Defense + technology research. Cross-listed under Policy + Economics."
+        }
+      ]
+    },
+    "Cross-cutting": {
+      "description": "Sources that span multiple domains (e.g. CRS reports on space economics; RAND on policy + technology).",
+      "sources": [],
+      "_curation_note": "Populate as actual cross-cutting needs emerge. RAND now appears explicitly in all three primary domains (Economics, Policy, Technology); CRS commonly cross-references space-economic and space-policy material."
+    }
+  },
+  "deny_list": {
+    "description": "URL patterns to explicitly exclude from S2 source discovery — blogs, opinion sections, low-trust content farms.",
+    "patterns": [
+      "/blog/",
+      "/opinion/",
+      "medium.com/",
+      "substack.com/p/",
+      "reddit.com/",
+      "twitter.com/",
+      "x.com/"
+    ],
+    "_curation_note": "Expand cautiously — some substack writers are domain experts. Better to soft-rank than hard-exclude."
+  }
+}

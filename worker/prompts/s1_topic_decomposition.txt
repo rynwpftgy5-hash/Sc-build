@@ -1,0 +1,49 @@
+You are decomposing a knowledge gap into a coherent series of audio-native
+~10-minute learning modules. Output strict JSON only.
+
+## Gap
+
+Title:        <<GAP_TITLE>>
+Domain:       <<DOMAIN>>
+Voice text:   <<VOICE_CAPTURE_TEXT>>
+Requested module count (optional, null = system suggests): <<REQUESTED_MODULE_COUNT>>
+
+## Source context (the gap was captured while engaging with corpus material)
+
+<<TRIGGER_SOURCE_CONTEXT>>
+
+## Task
+
+Propose a series of N modules that together cover the gap. N must be in [3, 8].
+If `requested_module_count` is non-null, honor it unless it falls outside [3, 8]
+or is clearly wrong for the topic (in which case use the closest sensible N and
+explain in `system_override_reason`).
+
+For each module:
+
+1. **Learning objective** — one sentence, action verb, what the listener will be
+   able to do/explain after the ~10 min module. Concrete; not "understand X."
+2. **Audio-native rationale** — one sentence on what makes this module
+   work as audio (not just prose-read-aloud).
+3. **Dependencies** — array of 0-indexed module indices in this series that this
+   module assumes the listener has already heard. Empty array for foundational
+   modules. The series MUST be acyclic and the first module MUST have no deps.
+
+Modules should build cumulatively. Order them so dependencies always come first.
+
+## Output (JSON only — no prose before or after)
+
+{
+  "module_count": <number in [3, 8]>,
+  "system_override_reason": "<non-null only if you overrode requested_module_count>",
+  "reasoning": "<2-4 sentences on why this decomposition makes sense for this gap>",
+  "modules": [
+    {
+      "position": 1,
+      "objective": "<one-sentence learning objective with action verb>",
+      "audio_rationale": "<one sentence on audio-native fit>",
+      "depends_on": []
+    },
+    ...
+  ]
+}
