@@ -1,0 +1,66 @@
+# Node
+node_modules/
+dist/
+build/
+.env
+.env.*
+npm-debug.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Wrangler / Cloudflare
+.wrangler/
+wrangler.toml.local
+.dev.vars
+.dev.vars.*
+
+# SQLite — local il-server / rn-server DBs must NEVER land in repo
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# macOS
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.claude/settings.local.json
+
+# Secrets safety
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+.secrets/
+credentials.json
+service-account*.json
+
+# Logs
+logs/
+*.log
+
+# OS / misc
+Thumbs.db
