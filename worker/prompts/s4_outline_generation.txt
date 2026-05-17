@@ -1,0 +1,84 @@
+You are generating an audio-native outline for a single ~10-minute learning
+module. The listener will hear this on a commute. Output strict JSON only.
+
+## Module
+
+Position in series: <<MODULE_POSITION>> of <<TOTAL_MODULES>>
+Learning objective: <<LEARNING_OBJECTIVE>>
+Audio rationale:    <<AUDIO_RATIONALE>>
+Dependencies (modules already heard):
+<<DEPENDENCIES_TEXT>>
+
+## Sources to draw from (selected at S2)
+
+<<CITATIONS_JSON>>
+
+## Analog (selected at S2.5, may be empty)
+
+<<ANALOG_JSON>>
+
+## Corpus snippets the listener has already engaged with (S3)
+
+<<CORPUS_SNIPPETS_JSON>>
+
+## Constraints
+
+- Audio-native, not prose-read-aloud: conversational, pacing cues (e.g.
+  "here's the key bit"), one idea per beat, no walls of citation.
+- **Duration ceiling: `estimated_total_seconds` MUST be ≤ 720 (12 minutes).**
+  Target ~600s (~10 min) at 160 wpm ≈ 1600 words. If a draft would push past
+  720s, trim sub-concepts or compress beats — do NOT exceed 720s. The hook +
+  core + integration + self-check overhead is ~180s, so sub-concepts together
+  should fit in ≤540s.
+- Every sub-concept beat must name the source it draws from. Sources by name
+  in-line ("per the SEC's 2024 guidance"), citations tracked separately at S5.
+- Prefer corpus snippets the listener has already engaged with when an example
+  is needed; supplement with new sources only when corpus is thin.
+- If an analog is supplied, integrate it into the appropriate sub-concept beat
+  — don't bolt it on. Name the analog source explicitly ("Schumpeter's
+  creative-destruction framing helps here…").
+- Self-checks at the end must be answerable from the module alone, not
+  general knowledge.
+
+## Output (JSON only)
+
+{
+  "hook": {
+    "seconds": 30,
+    "text": "<1-2 sentences that earn 10 minutes of attention. Concrete, not
+             abstract. References the listener's likely prior context.>"
+  },
+  "core_concept": {
+    "seconds": 90,
+    "claim": "<single-sentence thesis the module establishes>",
+    "framing": "<how it's set up; what the listener should hold in mind>",
+    "primary_source": "<source name from CITATIONS_JSON>"
+  },
+  "sub_concepts": [
+    {
+      "title": "<short label>",
+      "seconds": <int>,
+      "beat": "<2-4 sentence beat structure: setup → key idea → worked
+               example>",
+      "worked_example": "<concrete example, preferring corpus when available>",
+      "sources": ["<name>", "<name>"],
+      "uses_analog": <boolean — true on at most ONE sub-concept if an analog
+                     was supplied>
+    }
+  ],
+  "integration": {
+    "seconds": 60,
+    "text": "<2-3 sentences tying sub-concepts back to the core claim.
+             Reinforces the learning objective.>"
+  },
+  "self_checks": [
+    {
+      "question": "<one sentence>",
+      "model_answer": "<one sentence; not the test answer, just the reference>"
+    },
+    ...
+  ],
+  "estimated_total_seconds": <int — sum of beat seconds + ~30s buffer>,
+  "audio_voice_notes": "<optional 1-sentence note for TTS voice direction
+                        (e.g. 'lean professional, news-narration register')>"
+}

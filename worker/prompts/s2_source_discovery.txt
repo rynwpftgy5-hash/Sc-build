@@ -1,0 +1,69 @@
+You are ranking candidate sources for a single learning module. The sources
+come from two pools: (a) the Bedrock shelf — pre-curated high-trust
+authoritative sources per domain; (b) Brave web search results filtered through
+a deny-list (no blogs / opinion / social). Pick 4-8 sources that together cover
+the module's learning objective.
+
+Output strict JSON only.
+
+## Module
+
+Position in series: <<MODULE_POSITION>> of <<TOTAL_MODULES>>
+Learning objective: <<LEARNING_OBJECTIVE>>
+Domain:             <<DOMAIN>>
+
+## Bedrock candidates (pre-vetted, high trust by default)
+
+<<BEDROCK_JSON>>
+
+Note: any candidate with a `scope` field has a known-narrow applicability.
+Use only when the question matches the scope; otherwise reject and explain why
+in `rejected_with_reason`.
+
+## Web search candidates (filtered by deny_list; still need ranking)
+
+<<BRAVE_JSON>>
+
+## Selection rubric
+
+For each candidate you SELECT, supply:
+- `url`, `name`, `source_type` (regulator / standards_body / professional_body /
+  think_tank / government_official / government_oversight / research_institute /
+  international_org / ffrdc / academic_military / data_repository), `source_tier`
+  (`bedrock` or `web_search`), and `trust` (`primary` / `high` / `medium`).
+- `coverage_note` — one sentence on what this source covers for THIS module's
+  objective.
+- `scope_note_used` — if a Bedrock scope field constrained your use, restate
+  the relevant scope here; otherwise null.
+
+Prefer Bedrock over web_search when both are present and cover the same ground.
+For niche topics where Bedrock is thin, lean on web_search but still flag low-
+trust picks explicitly.
+
+NEVER include a source whose URL matches a deny_list pattern. NEVER include a
+source from a blog, opinion section, social platform, or content farm.
+
+## Output (JSON only)
+
+{
+  "selected": [
+    {
+      "url": "...",
+      "name": "...",
+      "source_type": "...",
+      "source_tier": "bedrock" | "web_search",
+      "trust": "primary" | "high" | "medium",
+      "coverage_note": "...",
+      "scope_note_used": "..." | null
+    },
+    ...
+  ],
+  "rejected_with_reason": [
+    { "url": "...", "reason": "..." }
+  ],
+  "uses_analog": <boolean — does this module's objective likely use an
+                  analogical-reasoning section in S5? True if the objective
+                  invokes pattern-recognition across domains (e.g.
+                  "explain X as an instance of Y" or "compare X to Z"); false
+                  for descriptive/definitional/procedural objectives.>
+}

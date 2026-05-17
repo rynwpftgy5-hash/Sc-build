@@ -1,0 +1,75 @@
+{
+  "_doc": "§8.4a.21 W3 analog seed bibliography. Authoritative texts whose causal frameworks frequently appear as analogs in fundamentals-learning modules. S2.5 (analog retrieval) starts here and may expand via web search per the 4-criterion rubric. Curation pass: Cowork browsing-assist + Campbell review per dispatch §8.4a.21 W3.",
+  "_revision": "v0.1 starter — Code-scaffolded 2026-05-17; needs Cowork bibliography expansion + Campbell review per dispatch §8.4a.21 W3.",
+  "schema_version": 1,
+  "entries": [
+    {
+      "author": "Joseph Schumpeter",
+      "work": "Capitalism, Socialism and Democracy",
+      "year": 1942,
+      "framework": "Creative Destruction",
+      "framework_summary": "Innovation drives the entrepreneurial process of replacing existing structures; market dynamics constantly recombine and displace prior arrangements.",
+      "epistemic_strength": "settled",
+      "common_analog_targets": ["industry transformation", "competitive displacement", "tech-driven sector reshaping"]
+    },
+    {
+      "author": "Clayton Christensen",
+      "work": "The Innovator's Dilemma",
+      "year": 1997,
+      "framework": "Disruptive innovation",
+      "framework_summary": "Incumbents serve mainstream customers efficiently but get displaced from below by lower-performance entrants whose price/access trajectories overtake the incumbent over time.",
+      "epistemic_strength": "contested",
+      "epistemic_notes": "Subject to substantial pushback (Jill Lepore 2014, Andrew King + Baljir Baatartogtokh 2015 etc.). Use carefully; flag the contestation in rationale.",
+      "common_analog_targets": ["new-entrant competitive dynamics", "transitional-good markets", "underserved-segment plays"]
+    },
+    {
+      "author": "Carlota Perez",
+      "work": "Technological Revolutions and Financial Capital",
+      "year": 2002,
+      "framework": "Techno-economic paradigm shifts",
+      "framework_summary": "Long-wave (~50yr) cycles of technological revolutions paired with financial-capital phases (installation → frenzy → turning point → synergy → maturity).",
+      "epistemic_strength": "contested",
+      "epistemic_notes": "Widely cited; framework is heuristic rather than fully validated. Strong on infrastructural-tech transitions.",
+      "common_analog_targets": ["infrastructure rollouts", "tech bubble dynamics", "long-wave economic history"]
+    },
+    {
+      "author": "Joel Mokyr",
+      "work": "The Lever of Riches",
+      "year": 1990,
+      "framework": "Sources of technological creativity in industrial revolutions",
+      "framework_summary": "Macro-conditions enabling sustained technological progress: micro-inventions accumulating, propositional vs. prescriptive knowledge, institutional + cultural prerequisites.",
+      "epistemic_strength": "settled",
+      "common_analog_targets": ["industrial revolution comparisons", "scientific-revolution era analogies", "knowledge-spillover dynamics"]
+    },
+    {
+      "author": "Daniel Yergin",
+      "work": "The Prize: The Epic Quest for Oil, Money & Power",
+      "year": 1990,
+      "framework": "Strategic-resource political economy",
+      "framework_summary": "How control over oil reshaped 20th-century geopolitics, corporate concentration, and state behavior; multi-actor strategic-resource dynamics.",
+      "epistemic_strength": "settled",
+      "common_analog_targets": ["strategic-resource competition", "state-corporation interaction", "geopolitical commodity dynamics"]
+    },
+    {
+      "author": "Walter Isaacson",
+      "work": "The Innovators",
+      "year": 2014,
+      "framework": "Collaborative-team origin of computing/internet revolution",
+      "framework_summary": "Internet + personal computing emerged from specific team structures, government-academia-industry partnerships, and individual collaborations.",
+      "epistemic_strength": "contested",
+      "epistemic_notes": "Useful for ecosystem-formation narratives but lighter on causal rigor than Mokyr or Yergin.",
+      "common_analog_targets": ["ecosystem formation", "research-commercialization handoffs", "DARPA-style state R&D"]
+    },
+    {
+      "author": "Richard Tedlow",
+      "work": "New and Improved: The Story of Mass Marketing in America",
+      "year": 1990,
+      "framework": "Three-phase mass-market evolution (fragmentation → unification → segmentation)",
+      "framework_summary": "How U.S. consumer markets passed through fragmentation, mass unification (1920s-60s), and re-segmentation; categorical patterns in market structure.",
+      "epistemic_strength": "settled",
+      "common_analog_targets": ["market structure phases", "consumer-segment evolution", "platform-economy historical parallels"]
+    }
+  ],
+  "expansion_workflow": "Cowork: identify additional authoritative texts per dispatch (e.g. classic monetary history, military doctrine evolution, regulatory capture, network effects). Add entries via PR or direct edit; Campbell reviews at next curation pass.",
+  "_curation_note": "Initial 7 entries match dispatch §8.4a.21 v0.3 list verbatim. Cowork's W3 browsing-assist pass should expand domain coverage (notable gaps: monetary history, network-economics theory, military procurement history)."
+}

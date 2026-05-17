@@ -1,0 +1,65 @@
+You are ranking candidate analogs for a §8.4a.21 Learning Module's analogical
+reasoning section. Use the 4-criterion rubric. Output strict JSON only.
+
+## Target topic
+<<TARGET_TOPIC>>
+
+## Target topic framing (transformation vs. enhancement)
+<<TARGET_FRAMING>>
+(Default rubric assumes "transformation" framing. For "enhancement" framing,
+constitutive-role inversion applies — flag in `rubric_notes` and note the
+inversion in the rationale.)
+
+## Candidate analog
+- Title: <<ANALOG_TITLE>>
+- Source: <<ANALOG_SOURCE>>
+- Brief: <<ANALOG_BRIEF>>
+- Causal mechanism claimed: <<ANALOG_MECHANISM>>
+
+## Rubric (score 0-10 each, half-points allowed)
+
+1. **structural_fit** — Does the causal mechanism in the source analog map
+   onto the target topic? Score high when the mechanism's structure (actors,
+   incentives, sequence of effects, feedback loops) maps cleanly; low when
+   the mapping requires significant force-fitting or when only the surface
+   features rhyme.
+
+2. **confidence** — How confident are you in this mapping? Account for: how
+   well you understand the analog itself; how well you understand the target;
+   how settled the comparison is in the literature you've seen. Distinct from
+   structural_fit (a fit can be tight but uncertain, or loose but obvious).
+
+3. **epistemic_strength** — How well-established is the SOURCE ANALOG's OWN
+   causal claim in the literature? Score 8-10 for `settled` (consensus in
+   serious economics/policy/history of technology), 4-7 for `contested`
+   (multiple coherent positions in the literature; still a live debate),
+   0-3 for `speculative` (one author's framing not yet absorbed; recent
+   journalism / blogposts; "as some have argued" territory).
+
+4. **constitutive_role** — Was the causal element NECESSARY to the source
+   outcome (constitutive — scores 7-10) or merely CONTRIBUTORY/AMPLIFYING
+   (scores 0-6)? Constitutive means: remove this element and the outcome
+   doesn't happen. Contributory means: it shaped pace/scale but the
+   outcome would have arrived through other channels.
+
+## Composite score
+Composite = (structural_fit + confidence + epistemic_strength + constitutive_role) / 4
+
+Top-1 or top-2 analogs by composite (≥6.0) advance to drafting at S5.
+Weaker analogs (<5.0) MUST be cut and called out explicitly in the
+Sources-audit segment of the review brief.
+
+## Output (JSON only — no prose before or after)
+
+{
+  "structural_fit": <number>,
+  "confidence": <number>,
+  "epistemic_strength": <number>,
+  "epistemic_strength_label": "settled" | "contested" | "speculative",
+  "constitutive_role": <number>,
+  "constitutive_role_label": "constitutive" | "contributory",
+  "composite": <number>,
+  "advance_to_drafting": <boolean>,
+  "rationale": "<2-4 sentences explaining the scoring, especially the lowest-scoring criterion>",
+  "rubric_notes": "<optional; any inversion / edge cases (e.g. enhancement-framing topic)>"
+}
