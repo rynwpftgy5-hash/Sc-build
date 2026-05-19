@@ -877,7 +877,7 @@ function TrackingBanner({ record, onPlayBrief, onOpenSeries, onDismiss }) {
 }
 
 // HOME
-function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue, onPlayArticle, onPickFromLibrary, onUntrack }) {
+function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue, onPlayArticle, onPickFromLibrary, onUntrack, onRetry }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gaps, setGaps] = useState([]);
@@ -934,7 +934,11 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
           <div className="empty-icon">⚠</div>
           Couldn't load: {error}
           <br/>
-          {isAuth ? "Open Settings to paste a fresh token." : "Try again in a moment — the server may be slow. Settings has a manual cache clear if it persists."}
+          {isAuth ? "Open Settings to paste a fresh token." : "Try again in a moment — the server may be slow."}
+          <div style={{ marginTop: 14, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+            <button className="play-btn-secondary" onClick={onRetry}>↻ Retry</button>
+            {isAuth ? null : <button className="play-btn-secondary" onClick={() => window.location.reload()}>Reload page</button>}
+          </div>
         </div>
       </div>
     );
@@ -1352,7 +1356,14 @@ function CapturesScreen({ refreshKey, onJump }) {
         <div className="section-meta">{items.length}</div>
       </div>
       {loading ? <div className="empty"><div className="spinner"></div></div>
-       : error ? <div className="empty">⚠ {error}</div>
+       : error ? (
+         <div className="empty">
+           ⚠ {error}
+           <div style={{ marginTop: 12 }}>
+             <button className="play-btn-secondary" onClick={() => { setError(null); setLoading(true); API.capturesToday().then((r) => { const res = (r && r.result) || {}; setItems(res.items || []); setCounts(res.counts || {}); setLoading(false); }).catch((e) => { setError(e.message); setLoading(false); }); }}>↻ Retry</button>
+           </div>
+         </div>
+       )
        : items.length === 0 ? (
         <div className="empty"><div className="empty-icon">💭</div>Nothing captured yet today. Tap any capture button mid-commute (flag, insight, note, question, learn) and it'll appear here.</div>
       ) : (
@@ -2210,14 +2221,26 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [preparingAudio, setPreparingAudio] = useState(null); // {msg, sub}
   const [tracked, setTracked] = useState(() => trackingLoad());
+  // R5.3: surface offline state so the user knows API failures are network,
+  // not bugs. navigator.onLine is conservative — false only when the browser
+  // is confident it has no connection; some flaky tunnels won't trigger.
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator !== "undefined" ? navigator.onLine !== false : true));
+  useEffect(() => {
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
   const refreshTracked = useCallback(() => setTracked(trackingLoad()), []);
   const untrackGap = useCallback((gap_id) => setTracked(trackingRemove(gap_id)), []);
 
-  // N3: parse window.location.hash on mount. Lets the desk open
-  // /uc3#mod=NN&t=SS and auto-load the module + seek. Format:
+  // N3 + R5.1: parse window.location.hash AFTER auth lands. Lets the desk
+  // open /uc3#mod=NN&t=SS and auto-load the module + seek. Format:
   //   #mod=123&t=45    → play module 123, seek to 45s
   //   #brief=123       → play brief audio for module 123
   useEffect(() => {
+    if (!authed) return;
     const h = (typeof window !== "undefined" && window.location && window.location.hash) || "";
     if (!h || h.length < 2) return;
     const params = new URLSearchParams(h.slice(1));
@@ -2240,7 +2263,7 @@ function App() {
         voiceId: null,
       }, t || 0), 0);
     }
-  }, []);
+  }, [authed]);
   const audioRef = useRef(null);
   const blobUrlRef = useRef(null);
 
@@ -2349,6 +2372,7 @@ function App() {
       refreshKey={refreshKey}
       tracked={tracked}
       onUntrack={untrackGap}
+      onRetry={bumpRefresh}
       onOpenSeries={(gapId, gapTitle) => navTo({ name: "series", gapId, gapTitle })}
       onPlayDue={(item) => playAudio({
         kind: "module-due", moduleId: item.module_id, audioUrl: API.moduleAudioUrl(item.module_id),
@@ -2392,6 +2416,13 @@ function App() {
 
   return (
     <div className="app">
+      {/* R5.3: offline banner — sticky top, shows only when the browser is
+          confident there's no connection. Apple-bar default. */}
+      {!isOnline && (
+        <div role="status" aria-live="polite" style={{ position: "sticky", top: 0, zIndex: 70, padding: "8px 12px", background: "rgba(133,79,11,.95)", color: "#fff", fontSize: 12, fontWeight: 500, textAlign: "center", borderBottom: "0.5px solid var(--accent-warm)" }}>
+          ⚠ You're offline — we'll resume when you're back online.
+        </div>
+      )}
       {/* Nav menu pill — always visible top-right */}
       <NavMenu />
 
