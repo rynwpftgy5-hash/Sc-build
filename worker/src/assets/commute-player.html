@@ -583,7 +583,8 @@ const timeAgo = (unix) => {
   return new Date(unix * 1000).toLocaleDateString();
 };
 
-const isLegacyGap = (g) => /\b(dry-run|W4|W5|W6|re-run)\b/i.test(g.gap_title || "");
+// Broader pattern future-proofed against W7/W8/W9/... and other test markers.
+const isLegacyGap = (g) => /\b(dry-run|W\d+|re-run|smoke[-_ ]?test|test gap|dryrun)\b/i.test(g.gap_title || "");
 
 // D4: pipeline-tracking surface. When a user captures a learning gap mid-
 // commute, we persist a small tracking record locally so HomeScreen can show
@@ -1859,10 +1860,10 @@ function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRef
           setPostApproveAudioUrl(API.moduleAudioUrl(me.id));
           return;
         }
-        // D1: backend-surfaced failure trumps the polling timeout. If
-        // audio_last_error is populated AND we've already retried at least
-        // once, treat it as a recoverable failure with a retry path.
-        if (!cancelled && me && me.audio_last_error && (me.audio_attempts_count || 0) >= 1 && !me.audio_r2_key) {
+        // D1: backend-surfaced failure trumps the polling timeout. Wait
+        // until attempts_count >= 2 so we don't flicker into "failed" mid
+        // CF-queue auto-retry (max_retries=2 means up to 3 total attempts).
+        if (!cancelled && me && me.audio_last_error && (me.audio_attempts_count || 0) >= 2 && !me.audio_r2_key) {
           setPostApproveError(me.audio_last_error);
           setPostApprove("audio-failed");
           return;
