@@ -76,5 +76,13 @@
 				"dead_letter_queue": "uc3-module-tts-dlq"
 			}
 		]
+	},
+	/* Item 2: daily briefing cron.
+	   11:00 UTC = 7:00 AM ET / 4:00 AM PT. Gives ~3-4h before a 9am commute
+	   for Sonnet synthesis + ElevenLabs chunked TTS (~3-5 min wall) plus
+	   buffer. Generator is idempotent on briefing_date so retries on
+	   transient failure are safe. */
+	"triggers": {
+		"crons": ["0 11 * * *"]
 	}
 }

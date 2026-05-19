@@ -25,6 +25,7 @@ import { reviseModule, type ReviseModuleResult } from "../lib/revise-module";
 import { generateBrief } from "../lib/review-brief";
 import { generateModuleAudio, type ModuleAudioResult } from "../lib/module-audio";
 import { createErrata, listErrata, type CreateErrataInput } from "../lib/module-errata";
+import { generateDailyBriefing } from "../lib/daily-briefing";
 import { listDueRows, markNextListened } from "../lib/spaced-rep";
 import { parseFeedback } from "../lib/feedback-parser";
 import { dispatchFeedback } from "../lib/feedback-dispatch";
@@ -552,6 +553,122 @@ export async function handleUc3CapturesToday(
 	} catch (err) {
 		return { ok: false, status: 502, error: `captures-today failed: ${(err as Error).message}` };
 	}
+}
+
+// Item 2D — GET /api/uc3/today-briefing
+// Returns the row for today's daily briefing if it exists, else 404. The
+// player home tile uses this on load to decide whether to render the
+// "Today's briefing" affordance.
+export async function handleUc3TodayBriefing(
+	_url: URL,
+	env: Uc3HandlerEnv,
+): Promise<{ ok: boolean; status?: number; result?: unknown; error?: string }> {
+	const today = new Date().toISOString().slice(0, 10);
+	try {
+		const row = await env.UC3_DB
+			.prepare(
+				`SELECT briefing_date, generated_at, audio_r2_key, audio_bytes, voice_id, status, last_error, source_summary
+				 FROM daily_briefings WHERE briefing_date = ?`,
+			)
+			.bind(today)
+			.first<{
+				briefing_date: string;
+				generated_at: number;
+				audio_r2_key: string | null;
+				audio_bytes: number | null;
+				voice_id: string | null;
+				status: string;
+				last_error: string | null;
+				source_summary: string | null;
+			}>();
+		if (!row) return { ok: false, status: 404, error: `no briefing for ${today}` };
+		let parsedSummary: unknown = null;
+		if (row.source_summary) {
+			try { parsedSummary = JSON.parse(row.source_summary); } catch { parsedSummary = row.source_summary; }
+		}
+		return {
+			ok: true,
+			status: 200,
+			result: {
+				briefing_date: row.briefing_date,
+				generated_at: row.generated_at,
+				audio_r2_key: row.audio_r2_key,
+				audio_bytes: row.audio_bytes,
+				voice_id: row.voice_id,
+				status: row.status,
+				last_error: row.last_error,
+				source_summary: parsedSummary,
+			},
+		};
+	} catch (err) {
+		return { ok: false, status: 502, error: `today-briefing failed: ${(err as Error).message}` };
+	}
+}
+
+// Item 2D — POST /api/uc3/daily-briefing-generate {async?: boolean}
+// Manual trigger for the daily-briefing pipeline. async=true uses
+// ctx.waitUntil to fire-and-forget so the HTTP request returns immediately.
+// Default is synchronous — useful for ad-hoc debugging from the desk.
+export async function handleUc3DailyBriefingGenerate(
+	body: { async?: boolean },
+	env: Uc3HandlerEnv,
+	ctx?: ExecutionContext,
+): Promise<{ ok: boolean; status?: number; result?: unknown; error?: string }> {
+	if (body?.async === true) {
+		if (!ctx) {
+			// Without ctx we can't fire-and-forget safely; fall back to sync.
+		} else {
+			ctx.waitUntil(
+				generateDailyBriefing(env).catch((err) => {
+					console.error("daily-briefing manual-async crashed:", (err as Error).message);
+				}),
+			);
+			return { ok: true, status: 202, result: { queued: true } };
+		}
+	}
+	try {
+		const r = await generateDailyBriefing(env);
+		return { ok: r.ok, status: r.ok ? 200 : 502, result: r };
+	} catch (err) {
+		return { ok: false, status: 502, error: `daily-briefing generate failed: ${(err as Error).message}` };
+	}
+}
+
+// Item 2D — GET /api/uc3/briefing-audio?date=YYYY-MM-DD streams the mp3.
+// Mirrors handleUc3ModuleAudio in shape so the player can swap the audio
+// element src and play directly.
+export async function handleUc3BriefingAudio(url: URL, env: Uc3HandlerEnv): Promise<Response> {
+	const date = url.searchParams.get("date");
+	if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+		return new Response(JSON.stringify({ ok: false, error: "query param 'date' (YYYY-MM-DD) required" }), {
+			status: 400,
+			headers: { "Content-Type": "application/json" },
+		});
+	}
+	const row = await env.UC3_DB
+		.prepare("SELECT audio_r2_key FROM daily_briefings WHERE briefing_date = ?")
+		.bind(date)
+		.first<{ audio_r2_key: string | null }>();
+	if (!row || !row.audio_r2_key) {
+		return new Response(JSON.stringify({ ok: false, error: `no briefing audio for ${date}` }), {
+			status: 404,
+			headers: { "Content-Type": "application/json" },
+		});
+	}
+	const obj = await env.TTS_CACHE.get(row.audio_r2_key);
+	if (!obj) {
+		return new Response(JSON.stringify({ ok: false, error: `audio R2 object missing: ${row.audio_r2_key}` }), {
+			status: 404,
+			headers: { "Content-Type": "application/json" },
+		});
+	}
+	return new Response(obj.body, {
+		status: 200,
+		headers: {
+			"Content-Type": "audio/mpeg",
+			"Cache-Control": "private, max-age=3600",
+		},
+	});
 }
 
 // D6 — GET /api/uc3/list-briefs-ready

@@ -40,10 +40,14 @@ import {
 	handleUc3ListGaps,
 	handleUc3ListBriefsReady,
 	handleUc3CapturesToday,
+	handleUc3TodayBriefing,
+	handleUc3DailyBriefingGenerate,
+	handleUc3BriefingAudio,
 } from "./handlers/uc3";
 import { handleS5Queue } from "./queue/s5-consumer";
 import { handleModuleTtsQueue } from "./queue/module-tts-consumer";
 import type { S5DraftMessage, ModuleTtsMessage } from "./lib/queues";
+import { generateDailyBriefing } from "./lib/daily-briefing";
 
 export { Uc3FundamentalsPipeline } from "./workflows/uc3-pipeline";
 
@@ -2579,6 +2583,11 @@ export default {
 		// can be opened directly in Safari/Files on phone. Mirrors how the
 		// Commute Player accesses /api/tts-cache/* without an Authorization
 		// header. Handled BEFORE the bearer-auth gate for /api/uc3/*.
+		// Item 2D: /api/uc3/briefing-audio is public (no bearer) so the
+		// player's <audio> element can stream it directly like module-audio.
+		if (url.pathname === "/api/uc3/briefing-audio" && request.method === "GET") {
+			return await handleUc3BriefingAudio(url, env);
+		}
 		if (url.pathname === "/api/uc3/brief-audio" && request.method === "GET") {
 			return await handleUc3BriefAudio(url, env);
 		}
@@ -2661,6 +2670,15 @@ export default {
 				const result = (await handleUc3CapturesToday(url, env)) as { ok: boolean; status?: number };
 				return jsonResponse(result.ok === false ? (result.status || 502) : 200, result);
 			}
+			// Item 2D: daily-briefing endpoints.
+			if (url.pathname === "/api/uc3/today-briefing" && request.method === "GET") {
+				const result = (await handleUc3TodayBriefing(url, env)) as { ok: boolean; status?: number };
+				return jsonResponse(result.ok === false ? (result.status || 502) : 200, result);
+			}
+			if (url.pathname === "/api/uc3/daily-briefing-generate" && request.method === "POST") {
+				const result = (await handleUc3DailyBriefingGenerate(body || {}, env, ctx)) as { ok: boolean; status?: number };
+				return jsonResponse(result.ok === false ? (result.status || 502) : (result.status || 200), result);
+			}
 			if (url.pathname === "/api/uc3/list-gaps" && request.method === "GET") {
 				const result = await handleUc3ListGaps(url, env);
 				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
@@ -2701,5 +2719,21 @@ export default {
 		} else {
 			console.error(`queue dispatcher: unknown queue ${batch.queue}`);
 		}
+	},
+	// Item 2: daily-briefing cron. Triggered by wrangler.jsonc triggers.crons.
+	// generateDailyBriefing is idempotent on briefing_date — if today's row is
+	// already 'ready' it returns the existing keys without rerunning the LLM.
+	async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+		ctx.waitUntil(
+			generateDailyBriefing(env).then((r) => {
+				if (r.ok) {
+					console.log(`daily-briefing ${r.briefing_date} ready (${r.audio_bytes} bytes, ${r.source_summary?.ingest_count ?? 0} ingests, ${r.source_summary?.insight_count ?? 0} insights)`);
+				} else {
+					console.error(`daily-briefing ${r.briefing_date} FAILED: ${r.error}`);
+				}
+			}).catch((err) => {
+				console.error("daily-briefing cron unexpected:", (err as Error).message);
+			}),
+		);
 	},
 };

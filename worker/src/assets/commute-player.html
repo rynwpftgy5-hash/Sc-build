@@ -487,6 +487,8 @@ const API = {
 
   listGaps: () => API._get("/api/uc3/list-gaps"),
   listBriefsReady: () => API._get("/api/uc3/list-briefs-ready"),
+  todayBriefing: () => API._get("/api/uc3/today-briefing"),
+  briefingAudioUrl: (date) => BASE + "/api/uc3/briefing-audio?date=" + encodeURIComponent(date),
   pipelineStatus: (gid) => API._get("/api/uc3/pipeline-status?gap_id=" + encodeURIComponent(gid)),
   spacedRepDue: () => API._get("/api/uc3/spaced-rep-due"),
   markListened: (mid) => API._post("/api/uc3/spaced-rep-mark-listened", { module_id: mid }),
@@ -917,13 +919,15 @@ function TrackingBanner({ record, onPlayBrief, onOpenSeries, onDismiss }) {
 }
 
 // HOME
-function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue, onPlayArticle, onPickFromLibrary, onUntrack, onRetry }) {
+function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue, onPlayArticle, onPickFromLibrary, onUntrack, onRetry, onPlayDailyBriefing, onRegenerateBriefing }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gaps, setGaps] = useState([]);
   const [due, setDue] = useState([]);
   const [briefsReady, setBriefsReady] = useState([]);
   const [articles, setArticles] = useState([]);
+  // Item 2E: today's daily briefing, if generated. 404 means nothing today yet.
+  const [todayBriefing, setTodayBriefing] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -931,12 +935,14 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
     setError(null);
     // D6: single batched call for brief-ready modules replaces the
     // N-round-trip pipelineStatus loop that ran 1× per gap.
+    // Item 2E: also fetch today's daily briefing in parallel (404 → null).
     Promise.all([
       API.listGaps().catch(e => ({ _err: e })),
       API.spacedRepDue().catch(e => ({ _err: e })),
       API.listArticles({ status_filter: ["Retrieved"], sort: "priority_then_email", limit: 10 }).catch(e => ({ _err: e })),
       API.listBriefsReady().catch(e => ({ _err: e })),
-    ]).then(([gapsRes, dueRes, articlesRes, briefsRes]) => {
+      API.todayBriefing().catch(e => ({ _err: e })),
+    ]).then(([gapsRes, dueRes, articlesRes, briefsRes, briefingRes]) => {
       if (cancelled) return;
       if (gapsRes._err) { setError(gapsRes._err.message); setLoading(false); return; }
       const allGaps = (gapsRes.result && gapsRes.result.gaps) || [];
@@ -960,6 +966,13 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
           durationSec: audioSecondsFromBytes(b.brief_audio_bytes),
         }));
       setBriefsReady(briefList);
+      // Item 2E: today's briefing row (any non-error status — ready, generating,
+      // or failed). Tile renderer handles each state distinctly so generation
+      // failures don't disappear silently (F14 lesson).
+      const briefingRow = briefingRes && !briefingRes._err && briefingRes.result
+        ? briefingRes.result
+        : null;
+      setTodayBriefing(briefingRow);
       setLoading(false);
     });
     return () => { cancelled = true; };
@@ -993,6 +1006,54 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
 
   return (
     <div className="page">
+      {/* Item 2E: today's auto-assembled audio briefing — when ready, sits
+          above everything else as the first thing Campbell sees in the morning.
+          Three states surface distinctly (F14: never silent on failure). */}
+      {todayBriefing && todayBriefing.status === "ready" && todayBriefing.audio_r2_key && (
+        <div className="card card-tap" style={{ marginBottom: 12, borderColor: "var(--accent)", background: "linear-gradient(135deg, rgba(24,95,165,0.06), rgba(24,95,165,0.02))" }}
+             onClick={() => onPlayDailyBriefing && onPlayDailyBriefing(todayBriefing)}>
+          <div className="row">
+            <div className="row-main">
+              <div className="row-title">🌅 Today's briefing</div>
+              <div className="row-sub">
+                {todayBriefing.audio_bytes ? fmtMin(audioSecondsFromBytes(todayBriefing.audio_bytes)) : "~5 min"}
+                {todayBriefing.source_summary && typeof todayBriefing.source_summary === "object"
+                  ? ` · ${todayBriefing.source_summary.ingest_count || 0} new items synthesized`
+                  : ""}
+              </div>
+              <div className="row-meta">Read by {voiceName(todayBriefing.voice_id)}</div>
+            </div>
+            <button className="play-btn" aria-label="Play today's briefing">▶</button>
+          </div>
+        </div>
+      )}
+      {todayBriefing && todayBriefing.status === "generating" && (
+        <div className="card" style={{ marginBottom: 12, background: "var(--bg-sunken)", borderColor: "var(--line-strong)" }}>
+          <div className="row">
+            <div className="spinner" style={{ flexShrink: 0, marginLeft: 4 }}></div>
+            <div className="row-main">
+              <div className="row-title">🌅 Today's briefing is being assembled</div>
+              <div className="row-sub">Synthesizing overnight changes · usually ready in a few minutes</div>
+            </div>
+          </div>
+        </div>
+      )}
+      {todayBriefing && todayBriefing.status === "failed" && (
+        <div className="card" style={{ marginBottom: 12, background: "rgba(163,45,45,.06)", borderColor: "var(--red)" }}>
+          <div className="row">
+            <div className="row-main">
+              <div className="row-title" style={{ color: "var(--red)" }}>⚠ Today's briefing couldn't be assembled</div>
+              <div className="row-sub">{todayBriefing.last_error ? `Reason: ${truncate(todayBriefing.last_error, 100)}` : "Something went wrong overnight."}</div>
+              <div style={{ marginTop: 10 }}>
+                <button className="play-btn-secondary" onClick={() => onRegenerateBriefing && onRegenerateBriefing()}>
+                  ↻ Try regenerating
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* D4: tracking banners for in-flight learning gap pipelines */}
       {(tracked || []).map((rec) => (
         <TrackingBanner
@@ -2510,6 +2571,23 @@ function App() {
       tracked={tracked}
       onUntrack={untrackGap}
       onRetry={bumpRefresh}
+      onPlayDailyBriefing={(briefing) => playAudio({
+        kind: "daily-briefing",
+        moduleId: null,
+        audioUrl: API.briefingAudioUrl(briefing.briefing_date),
+        title: "Today's briefing",
+        series: new Date(briefing.briefing_date + "T00:00:00Z").toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }),
+        voiceId: briefing.voice_id,
+      })}
+      onRegenerateBriefing={async () => {
+        showToast("Regenerating today's briefing…");
+        try {
+          await API._post("/api/uc3/daily-briefing-generate", { async: true });
+          setTimeout(() => bumpRefresh(), 1000);
+        } catch (e) {
+          showToast("Couldn't restart: " + e.message);
+        }
+      }}
       onOpenSeries={(gapId, gapTitle) => navTo({ name: "series", gapId, gapTitle })}
       onPlayDue={(item) => playAudio({
         kind: "module-due", moduleId: item.module_id, audioUrl: API.moduleAudioUrl(item.module_id),
