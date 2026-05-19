@@ -617,6 +617,46 @@ const trackingRemove = (gap_id) => {
   return next;
 };
 
+// Item 4: pending-capture queue. Mirror of trackingAdd/Remove/Load but for
+// capture items the user just submitted, so CapturesScreen can render them
+// before the server-side write + refetch lands. Items prune automatically
+// once they match a server item (by content prefix) or after 24h either way.
+const PENDING_CAPTURES_KEY = "spacesc_pending_captures";
+const pendingLoad = () => {
+  try {
+    const raw = localStorage.getItem(PENDING_CAPTURES_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    const cutoff = (Date.now() / 1000) - 86400;
+    return arr.filter(r => r && r.local_id && (r.created_at || 0) >= cutoff);
+  } catch (_) { return []; }
+};
+const pendingSave = (arr) => {
+  try { localStorage.setItem(PENDING_CAPTURES_KEY, JSON.stringify(arr || [])); } catch (_) {}
+};
+const pendingAdd = (type, content) => {
+  const arr = pendingLoad();
+  const next = [...arr, {
+    local_id: "local-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+    type, content: (content || "").trim(),
+    created_at: Math.floor(Date.now() / 1000),
+  }];
+  pendingSave(next);
+  return next;
+};
+const pendingPrune = (serverItems) => {
+  // Remove pending entries whose content prefix appears in any server item
+  // of the same type. Server items typically have richer / truncated content
+  // so we compare against the first 60 chars normalized.
+  const norm = (s) => (s || "").replace(/\s+/g, " ").trim().toLowerCase().slice(0, 60);
+  const serverFingerprints = new Set((serverItems || []).map(s => s.type + "|" + norm(s.content)));
+  const current = pendingLoad();
+  const next = current.filter(p => !serverFingerprints.has(p.type + "|" + norm(p.content)));
+  if (next.length !== current.length) pendingSave(next);
+  return next;
+};
+
 // D5: estimate audio duration in seconds from MP3 byte count. ElevenLabs
 // eleven_multilingual_v2 outputs ~128 kbps mp3 (16 KB/s). Approximation is
 // accurate to within a few seconds, which is plenty for queue UI.
@@ -1353,24 +1393,50 @@ const CAPTURE_TYPE_META = {
 function CapturesScreen({ refreshKey, onJump }) {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
-  const [counts, setCounts] = useState({ errata: 0, gap: 0, oq: 0 });
+  const [counts, setCounts] = useState({ errata: 0, gap: 0, oq: 0, insight: 0, rn: 0 });
   const [error, setError] = useState(null);
+  // Item 4B: pending list — items the user just captured locally that the
+  // server hasn't confirmed yet. Re-read from localStorage on every refresh
+  // so newly-submitted entries surface immediately.
+  const [pending, setPending] = useState(() => pendingLoad());
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    // Pull the latest local pending queue every refresh — a sheet submit
+    // may have happened since the last mount.
+    setPending(pendingLoad());
     API.capturesToday()
       .then((r) => {
         if (cancelled) return;
         const res = (r && r.result) || {};
-        setItems(res.items || []);
-        setCounts(res.counts || { errata: 0, gap: 0, oq: 0 });
+        const serverItems = res.items || [];
+        setItems(serverItems);
+        setCounts(res.counts || { errata: 0, gap: 0, oq: 0, insight: 0, rn: 0 });
+        // Prune any local pending that now matches a server item (by
+        // type + first-60-chars-normalized fingerprint). Keep the rest as
+        // still-syncing, with the 24h auto-expiry built into pendingLoad.
+        setPending(pendingPrune(serverItems));
         setLoading(false);
       })
       .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
     return () => { cancelled = true; };
   }, [refreshKey]);
+
+  // Item 4B: merge server + pending into a single chronological timeline.
+  // Pending items render with a "syncing…" badge and are non-clickable until
+  // their server-side copy lands.
+  const mergedItems = [
+    ...items,
+    ...pending.map(p => ({
+      type: p.type,
+      id: p.local_id,
+      content: p.content,
+      created_at: p.created_at,
+      _pending: true,
+    })),
+  ].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
 
   return (
     <div className="page">
@@ -1389,27 +1455,30 @@ function CapturesScreen({ refreshKey, onJump }) {
            </div>
          </div>
        )
-       : items.length === 0 ? (
+       : mergedItems.length === 0 ? (
         <div className="empty"><div className="empty-icon">💭</div>Nothing captured yet today. Tap any capture button mid-commute (flag, insight, note, question, learn) and it'll appear here.</div>
       ) : (
-        items.map((item) => {
+        mergedItems.map((item) => {
           const meta = CAPTURE_TYPE_META[item.type] || { icon: "•", label: item.type };
-          // Errata → in-player jump (already loaded audio path).
-          // Insight → /insights curation surface (existing in-system surface).
-          // Gap / OQ / RN → Notion page URL (no in-system surface yet).
-          const onClick = item.type === "errata"
-            ? () => onJump(item.module_id, item.timestamp_seconds || 0)
-            : item.type === "insight"
-              ? () => window.open("/insights", "_blank")
-              : (item.url ? () => window.open(item.url, "_blank") : undefined);
+          // Pending items (Item 4B) are non-clickable — they don't have a
+          // server-side URL yet. Errata → in-player jump. Insight → /insights.
+          // Gap / OQ / RN → Notion page URL (when synced).
+          const onClick = item._pending
+            ? undefined
+            : item.type === "errata"
+              ? () => onJump(item.module_id, item.timestamp_seconds || 0)
+              : item.type === "insight"
+                ? () => window.open("/insights", "_blank")
+                : (item.url ? () => window.open(item.url, "_blank") : undefined);
           return (
-            <div key={item.id} className={"card" + (onClick ? " card-tap" : "")} onClick={onClick}>
+            <div key={item.id} className={"card" + (onClick ? " card-tap" : "")} onClick={onClick} style={item._pending ? { opacity: 0.78 } : undefined}>
               <div className="row">
                 <div className="row-main">
                   <div className="row-title">{truncate(item.content || "(empty)", 130)}</div>
                   <div className="row-sub">
                     {meta.icon} {meta.label}
                     {item.type === "errata" && item.module_id ? ` · Module ${item.module_id} at ${fmtTime(item.timestamp_seconds || 0)}` : null}
+                    {item._pending ? <span style={{ marginLeft: 8, fontSize: 11, padding: "1px 7px", borderRadius: 10, border: "0.5px solid var(--accent-warm)", color: "var(--accent-warm)" }}>syncing…</span> : null}
                   </div>
                   <div className="row-meta">{timeAgo(item.created_at)}</div>
                 </div>
@@ -1500,6 +1569,8 @@ function FlagSheet({ moduleId, timestamp, onClose, onDone, showToast }) {
     setSubmitting(true);
     try {
       await API.flagClaim({ module_id: moduleId, timestamp_seconds: timestamp, notes: notes.trim() });
+      // Item 4C: instant Captures-tab visibility before captures-today refetch.
+      try { pendingAdd("errata", notes.trim()); } catch (_) {}
       onDone();
     } catch (e) {
       showToast && showToast("Flag failed: " + e.message);
@@ -1745,6 +1816,9 @@ function CaptureSheet({ kind, sourceInfo, onClose, onDone, showToast }) {
         // progress until the first brief lands.
         try { trackingAdd(res.learning_gap_id, text.trim().slice(0, 80)); } catch (_) {}
       }
+      // Item 4C: push a pending entry so the Captures tab shows it
+      // immediately, before the server-side captures-today refetch lands.
+      try { pendingAdd(kind, text.trim()); } catch (_) {}
       onDone(msg);
     } catch (e) {
       if (e.message && e.message.includes("mac_offline")) {
