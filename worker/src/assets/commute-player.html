@@ -2560,6 +2560,11 @@ function App() {
           <div className="prep-msg">{preparingAudio.msg}</div>
           <div className="prep-sub">{preparingAudio.sub}</div>
           <div className="spinner"></div>
+          {/* R7.1: escape hatch — background work continues + caches for
+              next time, but the user gets the UI back. */}
+          <button className="play-btn-secondary" onClick={() => setPreparingAudio(null)} style={{ marginTop: 10 }}>
+            Cancel
+          </button>
         </div>
       )}
 

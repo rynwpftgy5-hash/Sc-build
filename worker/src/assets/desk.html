@@ -385,7 +385,7 @@ function ItemRow({ a, onTriage, onOpenReading, showActions }) {
 // ═══════════════════════════════════════════════════════════════════════
 // TODAY — morning routine (overnight intake + captures-from-today + up-next-on-drive)
 // ═══════════════════════════════════════════════════════════════════════
-function TodayScreen({ refreshKey, onTriage, onOpenReading }) {
+function TodayScreen({ refreshKey, onTriage, onOpenReading, onRetry }) {
   const [loading, setLoading] = useState(true);
   const [overnight, setOvernight] = useState([]);
   const [queuedForDrive, setQueuedForDrive] = useState([]);
@@ -417,7 +417,15 @@ function TodayScreen({ refreshKey, onTriage, onOpenReading }) {
   }, [refreshKey]);
 
   if (loading) return <div className="empty"><div className="spinner"></div></div>;
-  if (error) return <div className="empty"><div className="empty-icon">⚠</div>Couldn't load: {error}</div>;
+  if (error) return (
+    <div className="empty">
+      <div className="empty-icon">⚠</div>
+      Couldn't load: {error}
+      <div style={{ marginTop: 12 }}>
+        <button className="play-btn-secondary" onClick={onRetry}>↻ Retry</button>
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -501,7 +509,7 @@ const INBOX_STATUSES = [
   { key: "All",                label: "All",          status: null },
 ];
 
-function InboxScreen({ refreshKey, onTriage, onOpenReading }) {
+function InboxScreen({ refreshKey, onTriage, onOpenReading, onRetry }) {
   const [activeFilter, setActiveFilter] = useState("New");
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
@@ -525,7 +533,7 @@ function InboxScreen({ refreshKey, onTriage, onOpenReading }) {
         ))}
       </div>
       {loading ? <div className="empty"><div className="spinner"></div></div>
-       : error ? <div className="empty">⚠ {error}</div>
+       : error ? <div className="empty">⚠ {error}<div style={{ marginTop: 12 }}><button className="play-btn-secondary" onClick={onRetry}>↻ Retry</button></div></div>
        : items.length === 0 ? (
          <div className="empty">
            <div className="empty-icon">📭</div>
@@ -541,7 +549,7 @@ function InboxScreen({ refreshKey, onTriage, onOpenReading }) {
 // ═══════════════════════════════════════════════════════════════════════
 // CAPTURES — deep links + inline flagged claims (mirrors player's pattern)
 // ═══════════════════════════════════════════════════════════════════════
-function CapturesScreen({ refreshKey }) {
+function CapturesScreen({ refreshKey, onRetry }) {
   const [loading, setLoading] = useState(true);
   const [errata, setErrata] = useState([]);
   const [error, setError] = useState(null);
@@ -604,7 +612,7 @@ function CapturesScreen({ refreshKey }) {
       </div>
       <div className="section-desc">Claims flagged during playback. Click to jump back to the moment in the player.</div>
       {loading ? <div className="empty"><div className="spinner"></div></div>
-       : error ? <div className="empty">⚠ {error}</div>
+       : error ? <div className="empty">⚠ {error}<div style={{ marginTop: 12 }}><button className="play-btn-secondary" onClick={onRetry}>↻ Retry</button></div></div>
        : errata.length === 0 ? (
          <div className="empty"><div className="empty-icon">💭</div>No flags yet. Tap 🚩 in the Commute Player while listening to flag a claim at the current moment.</div>
        ) : (
@@ -820,9 +828,9 @@ function App() {
         <button className={"tab" + (tab === "settings" ? " active" : "")} onClick={() => setTab("settings")}>⚙ Settings</button>
       </div>
 
-      {tab === "today" && <TodayScreen refreshKey={refreshKey} onTriage={onTriage} onOpenReading={onOpenReading} />}
-      {tab === "inbox" && <InboxScreen refreshKey={refreshKey} onTriage={onTriage} onOpenReading={onOpenReading} />}
-      {tab === "captures" && <CapturesScreen refreshKey={refreshKey} />}
+      {tab === "today" && <TodayScreen refreshKey={refreshKey} onTriage={onTriage} onOpenReading={onOpenReading} onRetry={bumpRefresh} />}
+      {tab === "inbox" && <InboxScreen refreshKey={refreshKey} onTriage={onTriage} onOpenReading={onOpenReading} onRetry={bumpRefresh} />}
+      {tab === "captures" && <CapturesScreen refreshKey={refreshKey} onRetry={bumpRefresh} />}
       {tab === "settings" && <SettingsScreen
         onClearToken={() => { API.clearToken(); setAuthed(false); }}
         onTokenUpdated={() => showToast("Token saved")}
