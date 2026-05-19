@@ -2412,6 +2412,7 @@ function App() {
             {view.name === "library" && "Library"}
             {view.name === "captures" && "Captures"}
           </div>
+          <button className="topbar-gear" onClick={bumpRefresh} aria-label="Refresh">↻</button>
           <button className="topbar-gear" onClick={() => navTo({ name: "settings" })} aria-label="Settings">⚙</button>
         </div>
       )}

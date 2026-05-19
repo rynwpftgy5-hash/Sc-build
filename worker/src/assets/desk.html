@@ -178,6 +178,24 @@ input, textarea, select { font: inherit; color: inherit; }
 .settings-input { width: 100%; padding: 10px 12px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-family: ui-monospace, monospace; font-size: 13px; margin-top: 8px; }
 .settings-action { color: var(--accent); font-size: 14px; padding: 8px 0; background: none; border: none; }
 .settings-action.danger { color: var(--red); }
+
+/* Cross-surface NavMenu (top-right pill) — mirrors the player's pattern */
+.nav-pill { position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); z-index: 80; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px 7px 10px; background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); font-size: 12px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.nav-pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
+.nav-pill-chev { font-size: 10px; color: var(--ink-mute); transition: transform .2s; }
+.nav-pill.open .nav-pill-chev { transform: rotate(180deg); }
+.nav-backdrop { position: fixed; inset: 0; background: rgba(31,29,24,0.18); z-index: 79; }
+.nav-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 44px)); right: max(10px, env(safe-area-inset-right)); z-index: 80; width: min(280px, calc(100vw - 20px)); background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(31,29,24,0.18); overflow: hidden; }
+.nav-menu-header { padding: 10px 14px 8px; border-bottom: 0.5px solid var(--line); font-size: 10px; font-weight: 700; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; }
+.nav-menu-item { display: flex; align-items: center; gap: 10px; padding: 12px 14px; text-decoration: none; color: var(--ink); border-bottom: 0.5px solid var(--line); }
+.nav-menu-item:last-child { border-bottom: none; }
+.nav-menu-item.active { background: var(--ink); color: var(--bg-elev); }
+.nav-menu-icon { font-size: 18px; flex-shrink: 0; width: 26px; text-align: center; }
+.nav-menu-text { flex: 1; min-width: 0; }
+.nav-menu-name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.nav-menu-desc { font-size: 11px; color: var(--ink-mute); margin-top: 1px; }
+.nav-menu-item.active .nav-menu-desc { color: rgba(250,249,245,0.7); }
+.nav-menu-arrow { color: var(--ink-mute); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -686,6 +704,53 @@ function SettingsScreen({ onClearToken, onTokenUpdated, showToast }) {
 // ═══════════════════════════════════════════════════════════════════════
 // APP ROOT
 // ═══════════════════════════════════════════════════════════════════════
+// Cross-surface tools list — mirrors player's SPACESC_TOOLS; desk is active here
+const SPACESC_TOOLS = [
+  { id: "commute",  name: "Commute",   desc: "Audio · listen + learn",          icon: "🎧", href: "/uc3" },
+  { id: "desk",     name: "Desk",      desc: "Today · inbox · captures",        icon: "🗂",  href: "/desk", active: true },
+  { id: "reading",  name: "Reading",   desc: "Deep read + annotation + chat",   icon: "📖", href: "/reading" },
+  { id: "corpus",   name: "Corpus",    desc: "Search the knowledge base",       icon: "🔍", href: "/corpus" },
+  { id: "insights", name: "Insights",  desc: "Approve or reject claims",        icon: "💎", href: "/insights" },
+  { id: "posture",  name: "Posture",   desc: "Three-domain balance",            icon: "📊", href: "/posture" },
+  { id: "pipeline", name: "Pipeline",  desc: "Ingestion health + errors",       icon: "🩺", href: "/pipeline" },
+  { id: "log",      name: "Build Log", desc: "What shipped, what's next",       icon: "📒", href: "/log" },
+  { id: "map",      name: "System map", desc: "Five use cases · build tree",    icon: "🗺",  href: "/system-map" },
+];
+
+function NavMenu() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className={"nav-pill" + (open ? " open" : "")} onClick={() => setOpen(!open)} aria-label="Open SpaceSC navigation">
+        <span className="nav-pill-dot"></span>
+        <span>SpaceSC</span>
+        <span className="nav-pill-chev">▼</span>
+      </button>
+      {open && (
+        <>
+          <div className="nav-backdrop" onClick={() => setOpen(false)}></div>
+          <div className="nav-menu" role="dialog" aria-label="SpaceSC tools">
+            <div className="nav-menu-header">Jump to</div>
+            {SPACESC_TOOLS.map((tool) => (
+              <a key={tool.id}
+                className={"nav-menu-item" + (tool.active ? " active" : "")}
+                href={tool.href}
+                onClick={(e) => { if (tool.active) e.preventDefault(); setOpen(false); }}>
+                <span className="nav-menu-icon">{tool.icon}</span>
+                <span className="nav-menu-text">
+                  <div className="nav-menu-name">{tool.name}</div>
+                  <div className="nav-menu-desc">{tool.desc}</div>
+                </span>
+                {tool.active ? null : <span className="nav-menu-arrow">→</span>}
+              </a>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 function App() {
   const [authed, setAuthed] = useState(() => API.hasToken());
   const [tab, setTab] = useState("today");
@@ -740,9 +805,11 @@ function App() {
 
   return (
     <div className="app">
+      <NavMenu />
       <div className="topbar">
         <div className="topbar-title">Desk</div>
         <div className="topbar-sub">SpaceSC · ingest & curation</div>
+        <button className="topbar-gear" onClick={() => bumpRefresh()} aria-label="Refresh">↻</button>
         <button className="topbar-gear" onClick={() => setTab("settings")} aria-label="Settings">⚙</button>
       </div>
 
@@ -767,7 +834,7 @@ function App() {
           <div className="drive-footer-inner">
             <div>
               <div className="drive-footer-label">Queued for drive</div>
-              <div className="drive-footer-count">{queuedCount} item{queuedCount === 1 ? "" : "s"} · ~{queuedCount * 6} min</div>
+              <div className="drive-footer-count">{queuedCount} item{queuedCount === 1 ? "" : "s"}</div>
             </div>
             <div className="drive-footer-sub">Articles you triaged to "Retrieved" — they'll play in priority order.</div>
             <a className="drive-footer-link" href="/uc3">Open player →</a>
@@ -775,7 +842,7 @@ function App() {
         </div>
       )}
 
-      {toast && <div className="toast">{toast.msg}</div>}
+      {toast && <div className="toast" role="status" aria-live="polite">{toast.msg}</div>}
     </div>
   );
 }
