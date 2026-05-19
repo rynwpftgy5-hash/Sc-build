@@ -146,12 +146,16 @@ export async function generateDailyBriefing(env: DailyBriefingEnv): Promise<Dail
 	const nowS = Math.floor(Date.now() / 1000);
 	const sinceIso = new Date(Date.now() - 86400 * 1000).toISOString();
 
-	// 1. Upsert a row in 'generating' state. Idempotent: if today's briefing
-	//    already exists in 'ready', return early to avoid double-billing.
+	// 1. Idempotency checks against the existing row:
+	//    a) If today's briefing is already 'ready' → return existing keys.
+	//    b) If status='generating' and started <5min ago → another invocation
+	//       is in-flight; bail to prevent double-billing LLM+TTS. (B5: cron
+	//       can fire twice on retry semantics; without this guard both would
+	//       call Sonnet + ElevenLabs.)
 	const existing = await env.UC3_DB
-		.prepare("SELECT id, status, audio_r2_key, transcript_r2_key, audio_bytes, voice_id FROM daily_briefings WHERE briefing_date = ?")
+		.prepare("SELECT id, status, audio_r2_key, transcript_r2_key, audio_bytes, voice_id, generated_at FROM daily_briefings WHERE briefing_date = ?")
 		.bind(briefing_date)
-		.first<{ id: number; status: string; audio_r2_key: string | null; transcript_r2_key: string | null; audio_bytes: number | null; voice_id: string | null }>();
+		.first<{ id: number; status: string; audio_r2_key: string | null; transcript_r2_key: string | null; audio_bytes: number | null; voice_id: string | null; generated_at: number }>();
 
 	if (existing && existing.status === "ready" && existing.audio_r2_key) {
 		return {
@@ -161,6 +165,14 @@ export async function generateDailyBriefing(env: DailyBriefingEnv): Promise<Dail
 			audio_bytes: existing.audio_bytes ?? undefined,
 			transcript_r2_key: existing.transcript_r2_key ?? undefined,
 			voice_id: existing.voice_id ?? undefined,
+		};
+	}
+	const STALE_GENERATING_S = 300; // 5 minutes
+	if (existing && existing.status === "generating" && (nowS - existing.generated_at) < STALE_GENERATING_S) {
+		return {
+			ok: false,
+			briefing_date,
+			error: `Another generation is already in flight (started ${nowS - existing.generated_at}s ago).`,
 		};
 	}
 
@@ -199,13 +211,17 @@ export async function generateDailyBriefing(env: DailyBriefingEnv): Promise<Dail
 			maxTokens: TARGET_MAX_TOKENS,
 		});
 		if (!llm.ok || !llm.text) {
-			const errText = `Sonnet synthesis failed: ${llm.error ?? "no text returned"}`;
+			// User-facing message kept jargon-free (F11). Raw error stays in
+			// console.warn for diagnostics.
+			console.warn(`daily-briefing LLM failure: ${llm.error ?? "no text returned"}`);
+			const errText = "Couldn't generate the briefing script — try regenerating in a moment.";
 			await setFailed(errText);
 			return { ok: false, briefing_date, error: errText };
 		}
 		const script = llm.text.trim();
 		if (script.length < 200) {
-			const errText = `Synthesis output too short to render: ${script.length} chars`;
+			console.warn(`daily-briefing script too short: ${script.length} chars`);
+			const errText = "The briefing script came back too short to render — try regenerating.";
 			await setFailed(errText);
 			return { ok: false, briefing_date, error: errText };
 		}
@@ -214,7 +230,8 @@ export async function generateDailyBriefing(env: DailyBriefingEnv): Promise<Dail
 		const voice_id = env.ELEVENLABS_DEFAULT_VOICE_ID || DEFAULT_VOICE_FALLBACK;
 		const tts = await ttsChunkedToBuffer(script, voice_id, ELEVENLABS_DEFAULT_MODEL, undefined, env.ELEVENLABS_API_KEY);
 		if (!tts.ok) {
-			const errText = `TTS failed: ${tts.error}`;
+			console.warn(`daily-briefing TTS failure: ${tts.error}`);
+			const errText = "Couldn't render the briefing audio — try regenerating in a moment.";
 			await setFailed(errText);
 			return { ok: false, briefing_date, error: errText };
 		}
@@ -247,7 +264,9 @@ export async function generateDailyBriefing(env: DailyBriefingEnv): Promise<Dail
 			source_summary: { ingest_count: ingests.length, insight_count: insights.length },
 		};
 	} catch (err) {
-		const errText = (err as Error).message;
+		const rawText = (err as Error).message;
+		console.warn(`daily-briefing unexpected: ${rawText}`);
+		const errText = "Something went wrong while assembling the briefing — try regenerating.";
 		await setFailed(errText);
 		return { ok: false, briefing_date, error: errText };
 	}

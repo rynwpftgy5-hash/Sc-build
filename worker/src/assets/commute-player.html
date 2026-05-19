@@ -978,6 +978,19 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
     return () => { cancelled = true; };
   }, [refreshKey]);
 
+  // B6: auto-poll while the briefing is mid-generation so the user doesn't
+  // have to manually refresh to see it flip to 'ready'. Same pattern as N2.
+  useEffect(() => {
+    if (!todayBriefing || todayBriefing.status !== "generating") return;
+    let cancelled = false;
+    const t = setInterval(() => {
+      API.todayBriefing()
+        .then((r) => { if (!cancelled && r && r.result) setTodayBriefing(r.result); })
+        .catch(() => {});
+    }, 30_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [todayBriefing && todayBriefing.status]);
+
   if (loading) return <div className="page"><div className="empty"><div className="empty-icon">⏳</div>Loading your day…</div></div>;
   if (error) {
     const isAuth = /unauthorized|401|403|no token/i.test(error);
@@ -1826,6 +1839,11 @@ function sourceContextString(src) {
   }
   if (src.kind === "module" || src.kind === "module-due") {
     return `Captured during episode for module ${src.moduleId} at ${ts}.`;
+  }
+  // B7: explicit case so the user-facing source line says "today's briefing"
+  // instead of leaking the internal kind string "daily-briefing".
+  if (src.kind === "daily-briefing") {
+    return `Captured during today's briefing at ${ts}.`;
   }
   return `Captured during ${src.kind} at ${ts}.`;
 }
