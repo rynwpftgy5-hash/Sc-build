@@ -38,6 +38,8 @@ import {
 	handleUc3SpacedRepDue,
 	handleUc3SpacedRepMarkListened,
 	handleUc3ListGaps,
+	handleUc3ListBriefsReady,
+	handleUc3CapturesToday,
 } from "./handlers/uc3";
 import { handleS5Queue } from "./queue/s5-consumer";
 import { handleModuleTtsQueue } from "./queue/module-tts-consumer";
@@ -2516,6 +2518,14 @@ export default {
 			if (url.pathname === "/api/uc3/spaced-rep-due" && request.method === "GET") {
 				const result = await handleUc3SpacedRepDue(url, env);
 				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/uc3/list-briefs-ready" && request.method === "GET") {
+				const result = (await handleUc3ListBriefsReady(url, env)) as { ok: boolean; status?: number };
+				return jsonResponse(result.ok === false ? (result.status || 502) : 200, result);
+			}
+			if (url.pathname === "/api/uc3/captures-today" && request.method === "GET") {
+				const result = (await handleUc3CapturesToday(url, env)) as { ok: boolean; status?: number };
+				return jsonResponse(result.ok === false ? (result.status || 502) : 200, result);
 			}
 			if (url.pathname === "/api/uc3/list-gaps" && request.method === "GET") {
 				const result = await handleUc3ListGaps(url, env);

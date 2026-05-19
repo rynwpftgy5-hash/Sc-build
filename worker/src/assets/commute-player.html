@@ -486,12 +486,15 @@ const API = {
   },
 
   listGaps: () => API._get("/api/uc3/list-gaps"),
+  listBriefsReady: () => API._get("/api/uc3/list-briefs-ready"),
   pipelineStatus: (gid) => API._get("/api/uc3/pipeline-status?gap_id=" + encodeURIComponent(gid)),
   spacedRepDue: () => API._get("/api/uc3/spaced-rep-due"),
   markListened: (mid) => API._post("/api/uc3/spaced-rep-mark-listened", { module_id: mid }),
   errataListAll: () => API._get("/api/uc3/module-errata-list?status=open"),
+  capturesToday: () => API._get("/api/uc3/captures-today"),
   flagClaim: (body) => API._post("/api/uc3/module-errata-create", body),
   approve: (mid) => API._post("/api/uc3/module-approve", { module_id: mid }, { timeout: 15000 }),
+  retryModuleTts: (mid) => API._post("/api/uc3/module-tts", { module_id: mid }, { timeout: 15000 }),
   reactFeedback: (mid, t) => API._post("/api/uc3/module-feedback", { module_id: mid, voice_transcript: t }, { timeout: 600000 }),
   captureInsight: (body) => API._post("/api/capture", body),
   captureRn: (body) => API._post("/api/rn-capture", body),
@@ -581,6 +584,43 @@ const timeAgo = (unix) => {
 };
 
 const isLegacyGap = (g) => /\b(dry-run|W4|W5|W6|re-run)\b/i.test(g.gap_title || "");
+
+// D4: pipeline-tracking surface. When a user captures a learning gap mid-
+// commute, we persist a small tracking record locally so HomeScreen can show
+// "your new series is building · N of M briefs ready" until the first brief
+// lands. Survives reload; auto-prunes after 24h or when the series is whole.
+const TRACKING_KEY = "spacesc_tracking_gaps";
+const trackingLoad = () => {
+  try {
+    const raw = localStorage.getItem(TRACKING_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    const cutoff = (Date.now() / 1000) - 86400;
+    return arr.filter(r => r && r.gap_id && (r.started_at || 0) >= cutoff);
+  } catch (_) { return []; }
+};
+const trackingSave = (arr) => {
+  try { localStorage.setItem(TRACKING_KEY, JSON.stringify(arr || [])); } catch (_) {}
+};
+const trackingAdd = (gap_id, title) => {
+  const arr = trackingLoad();
+  if (arr.find(r => r.gap_id === gap_id)) return arr;
+  const next = [...arr, { gap_id, title: title || "(new series)", started_at: Math.floor(Date.now() / 1000) }];
+  trackingSave(next);
+  return next;
+};
+const trackingRemove = (gap_id) => {
+  const next = trackingLoad().filter(r => r.gap_id !== gap_id);
+  trackingSave(next);
+  return next;
+};
+
+// D5: estimate audio duration in seconds from MP3 byte count. ElevenLabs
+// eleven_multilingual_v2 outputs ~128 kbps mp3 (16 KB/s). Approximation is
+// accurate to within a few seconds, which is plenty for queue UI.
+const audioSecondsFromBytes = (bytes) => (bytes && bytes > 0) ? Math.round(bytes / 16000) : null;
+const fmtMin = (s) => (s == null) ? "" : Math.max(1, Math.round(s / 60)) + " min";
 
 // SpaceSC tool registry (mirrors v3 space-nav.js). Relative hrefs assume
 // the artifacts are co-hosted; absolute URLs can be set via Settings later.
@@ -743,14 +783,99 @@ function ArticleRow({ a, onPlay }) {
             <span className="chip">{a.status}</span>
           </div>
         </div>
-        <button className="play-btn">▶</button>
+        <button className="play-btn" aria-label={"Play article: " + (a.title || "(untitled)")}>▶</button>
+      </div>
+    </div>
+  );
+}
+
+// D4 — TrackingBanner: shows build progress for a freshly-captured Learning
+// Gap. Polls pipeline-status every 25s. Auto-dismisses once the first brief
+// is playable; user can dismiss manually anytime.
+function TrackingBanner({ record, onPlayBrief, onOpenSeries, onDismiss }) {
+  const [state, setState] = useState({ phase: "loading", modules: [], gapTitle: record.title });
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await API.pipelineStatus(record.gap_id);
+        if (cancelled) return;
+        const mods = (r.modules || []);
+        const briefReady = mods.find(m => m.review_brief && m.review_brief.audio_r2_key);
+        const pipelineStatus = (r.pipeline && r.pipeline.status) || "running";
+        setState({
+          phase: briefReady ? "first-brief-ready" : (mods.length === 0 ? "queued" : "cooking"),
+          modules: mods,
+          briefReady,
+          pipelineStatus,
+          totalModules: mods.length,
+          briefsReady: mods.filter(m => m.review_brief && m.review_brief.audio_r2_key).length,
+          gapTitle: r.gap_title || record.title,
+        });
+      } catch (e) {
+        if (!cancelled) setState((s) => ({ ...s, phase: "error", error: e.message }));
+      }
+    };
+    poll();
+    const t = setInterval(poll, 25_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [record.gap_id]);
+
+  const dismiss = () => onDismiss(record.gap_id);
+
+  // Cap visible age in the banner — if the pipeline has been running >15min
+  // without a brief yet, switch copy to "this is taking longer than usual".
+  const ageMin = Math.round((Date.now() / 1000 - record.started_at) / 60);
+
+  if (state.phase === "first-brief-ready" && state.briefReady) {
+    const m = state.briefReady;
+    return (
+      <div style={{ padding: "16px", margin: "0 0 14px 0", borderRadius: "var(--radius)", background: "rgba(59,109,17,.08)", border: "0.5px solid var(--green)" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--green)", marginBottom: 4 }}>🆕 First brief is ready</div>
+            <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+              {state.gapTitle} · {state.briefsReady} of {state.totalModules || "?"} briefs ready
+            </div>
+          </div>
+          <button onClick={dismiss} style={{ background: "none", border: "none", fontSize: 18, color: "var(--ink-mute)", cursor: "pointer" }} aria-label="Dismiss tracker">×</button>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          <button className="play-btn" onClick={() => onPlayBrief(m, state.gapTitle, state.totalModules)}>
+            ▶ Listen now
+          </button>
+          <button className="play-btn-secondary" onClick={() => { dismiss(); onOpenSeries(record.gap_id, state.gapTitle); }}>
+            Open series
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const taking = ageMin > 15;
+  return (
+    <div style={{ padding: "14px 16px", margin: "0 0 14px 0", borderRadius: "var(--radius)", background: "var(--bg-sunken)", border: "0.5px solid var(--line-strong)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="spinner" style={{ flexShrink: 0 }}></div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 500 }}>
+            {taking ? "Still building" : "Building your new series"}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>
+            {truncate(state.gapTitle, 80)}
+            {state.totalModules ? ` · ${state.briefsReady} of ${state.totalModules} briefs ready` : taking ? ` · started ${ageMin}m ago` : " · usually takes ~5 minutes"}
+          </div>
+          {state.phase === "error" && <div style={{ fontSize: 11, color: "var(--red)", marginTop: 2 }}>Couldn't check status — will keep trying</div>}
+        </div>
+        <button onClick={dismiss} style={{ background: "none", border: "none", fontSize: 18, color: "var(--ink-mute)", cursor: "pointer" }} aria-label="Dismiss tracker">×</button>
       </div>
     </div>
   );
 }
 
 // HOME
-function HomeScreen({ refreshKey, onOpenSeries, onPlayDue, onPlayBrief, onPlayArticle, onPickFromLibrary }) {
+function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue, onPlayArticle, onPickFromLibrary, onUntrack }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gaps, setGaps] = useState([]);
@@ -762,11 +887,14 @@ function HomeScreen({ refreshKey, onOpenSeries, onPlayDue, onPlayBrief, onPlayAr
     let cancelled = false;
     setLoading(true);
     setError(null);
+    // D6: single batched call for brief-ready modules replaces the
+    // N-round-trip pipelineStatus loop that ran 1× per gap.
     Promise.all([
       API.listGaps().catch(e => ({ _err: e })),
       API.spacedRepDue().catch(e => ({ _err: e })),
       API.listArticles({ status_filter: ["Retrieved"], sort: "priority_then_email", limit: 10 }).catch(e => ({ _err: e })),
-    ]).then(async ([gapsRes, dueRes, articlesRes]) => {
+      API.listBriefsReady().catch(e => ({ _err: e })),
+    ]).then(([gapsRes, dueRes, articlesRes, briefsRes]) => {
       if (cancelled) return;
       if (gapsRes._err) { setError(gapsRes._err.message); setLoading(false); return; }
       const allGaps = (gapsRes.result && gapsRes.result.gaps) || [];
@@ -775,29 +903,22 @@ function HomeScreen({ refreshKey, onOpenSeries, onPlayDue, onPlayBrief, onPlayAr
       setDue((dueRes.result && dueRes.result.due) || []);
       if (!articlesRes._err) setArticles(articlesRes.rows || []);
 
-      const briefList = [];
-      for (const g of real) {
-        if (!g.brief_audio_ready_count) continue;
-        try {
-          const ps = await API.pipelineStatus(g.gap_id);
-          for (const m of (ps.modules || [])) {
-            if (moduleUserState(m) === "brief-ready") {
-              briefList.push({
-                moduleId: m.id,
-                title: truncate(m.learning_objective, 80),
-                voiceId: m.review_brief && m.review_brief.voice_id,
-                series: g.gap_title,
-                gapId: g.gap_id,
-                position: m.position,
-                totalPositions: ps.modules.length,
-              });
-              if (briefList.length >= 6) break;
-            }
-          }
-          if (briefList.length >= 6) break;
-        } catch (_) {}
-      }
-      if (!cancelled) { setBriefsReady(briefList); setLoading(false); }
+      const rawBriefs = (briefsRes && briefsRes.result && briefsRes.result.briefs) || [];
+      const briefList = rawBriefs
+        .filter(b => !isLegacyGap({ gap_title: b.gap_title || "" }))
+        .slice(0, 6)
+        .map(b => ({
+          moduleId: b.module_id,
+          title: truncate(b.learning_objective, 80),
+          voiceId: b.voice_id,
+          series: b.gap_title,
+          gapId: b.gap_id,
+          position: b.position,
+          totalPositions: b.total_in_series,
+          durationSec: audioSecondsFromBytes(b.brief_audio_bytes),
+        }));
+      setBriefsReady(briefList);
+      setLoading(false);
     });
     return () => { cancelled = true; };
   }, [refreshKey]);
@@ -818,10 +939,24 @@ function HomeScreen({ refreshKey, onOpenSeries, onPlayDue, onPlayBrief, onPlayAr
   }
 
   const queueLength = briefsReady.length + due.length + articles.length;
-  const queueMin = (briefsReady.length * 5) + (due.length * 10) + (articles.length * 6);
+  // D5: real durations for briefs (from audio_bytes); rough estimates for
+  // due re-listens and articles since neither carries duration metadata yet.
+  const briefSec = briefsReady.reduce((acc, b) => acc + (b.durationSec || 300), 0);
+  const queueSec = briefSec + (due.length * 600) + (articles.length * 360);
+  const queueMin = Math.round(queueSec / 60);
 
   return (
     <div className="page">
+      {/* D4: tracking banners for in-flight learning gap pipelines */}
+      {(tracked || []).map((rec) => (
+        <TrackingBanner
+          key={rec.gap_id}
+          record={rec}
+          onPlayBrief={(m, gapTitle, total) => onPlayBrief(m.id, truncate(m.learning_objective, 80), gapTitle, m.review_brief && m.review_brief.voice_id, rec.gap_id, m.position, total)}
+          onOpenSeries={onOpenSeries}
+          onDismiss={onUntrack}
+        />
+      ))}
       {queueLength > 0 ? (
         <div className="queue-tile">
           <div className="queue-label">Today's drive</div>
@@ -879,9 +1014,9 @@ function HomeScreen({ refreshKey, onOpenSeries, onPlayDue, onPlayBrief, onPlayAr
                 <div className="row-main">
                   <div className="row-title">{b.title}</div>
                   <div className="row-sub">{b.series} · Episode {b.position} of {b.totalPositions}</div>
-                  <div className="row-meta">Brief · ~5 min · Read by {voiceName(b.voiceId)}</div>
+                  <div className="row-meta">Brief · {b.durationSec ? fmtMin(b.durationSec) : "~5 min"} · Read by {voiceName(b.voiceId)}</div>
                 </div>
-                <button className="play-btn">▶ Brief</button>
+                <button className="play-btn" aria-label={"Play brief: " + b.title}>▶ Brief</button>
               </div>
             </div>
           ))}
@@ -902,7 +1037,7 @@ function HomeScreen({ refreshKey, onOpenSeries, onPlayDue, onPlayBrief, onPlayAr
                   <div className="row-title">{truncate(d.learning_objective, 80)}</div>
                   <div className="row-sub">Cadence {d.cadence} · due {timeAgo(d.due_at)}</div>
                 </div>
-                <button className="play-btn">▶</button>
+                <button className="play-btn" aria-label={"Play due re-listen: " + truncate(d.learning_objective, 60)}>▶</button>
               </div>
             </div>
           ))}
@@ -1129,9 +1264,17 @@ function SeriesScreen({ gapId, gapTitle, refreshKey, onPlayBrief, onPlayModule }
         <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5 }}>
           <div><strong>Captured:</strong> {startedTs ? timeAgo(startedTs) + " (" + new Date(startedTs * 1000).toLocaleDateString() + ")" : "—"}</div>
           <div style={{ marginTop: 8 }}>
-            <a href={NOTION_LINKS.gaps} target="_blank" style={{ color: "var(--accent)", fontSize: 13 }}>
-              Open the Learning Gaps Queue in Notion →
-            </a>
+            {/* D3: deep-link to the specific gap row when notion_page_id is
+                available; fall back to the whole queue otherwise. */}
+            {data.notion_page_id ? (
+              <a href={"https://www.notion.so/" + String(data.notion_page_id).replace(/-/g, "")} target="_blank" style={{ color: "var(--accent)", fontSize: 13 }}>
+                Open this gap in Notion →
+              </a>
+            ) : (
+              <a href={NOTION_LINKS.gaps} target="_blank" style={{ color: "var(--accent)", fontSize: 13 }}>
+                Open the Learning Gaps Queue in Notion →
+              </a>
+            )}
           </div>
         </div>
       </div>
@@ -1148,24 +1291,76 @@ function SeriesScreen({ gapId, gapTitle, refreshKey, onPlayBrief, onPlayModule }
   );
 }
 
-// CAPTURES (flagged claims inline + deep links to other capture ledgers)
+// CAPTURES — D2: unified "from today" timeline across errata + gaps + OQs,
+// plus deep-link panel to ledgers that live elsewhere (insights, RNs, full
+// queues). Lets the user verify mid-commute captures landed without leaving
+// the surface that captured them.
+const CAPTURE_TYPE_META = {
+  errata: { icon: "🚩", label: "Flagged claim" },
+  gap:    { icon: "🎓", label: "Learning gap" },
+  oq:     { icon: "❓", label: "Open question" },
+};
+
 function CapturesScreen({ refreshKey, onJump }) {
   const [loading, setLoading] = useState(true);
-  const [errata, setErrata] = useState([]);
+  const [items, setItems] = useState([]);
+  const [counts, setCounts] = useState({ errata: 0, gap: 0, oq: 0 });
   const [error, setError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    API.errataListAll().then((r) => { if (cancelled) return; setErrata((r.result && r.result.errata) || []); setLoading(false); })
+    setError(null);
+    API.capturesToday()
+      .then((r) => {
+        if (cancelled) return;
+        const res = (r && r.result) || {};
+        setItems(res.items || []);
+        setCounts(res.counts || { errata: 0, gap: 0, oq: 0 });
+        setLoading(false);
+      })
       .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
     return () => { cancelled = true; };
   }, [refreshKey]);
 
   return (
     <div className="page">
-      {/* Deep-link panel — always visible, even before anything is captured */}
+      {/* From today — unified timeline */}
       <div className="section first">
+        <div className="section-icon">📅</div>
+        <div className="section-title">From the last 24 hours</div>
+        <div className="section-meta">{items.length}</div>
+      </div>
+      {loading ? <div className="empty"><div className="spinner"></div></div>
+       : error ? <div className="empty">⚠ {error}</div>
+       : items.length === 0 ? (
+        <div className="empty"><div className="empty-icon">💭</div>Nothing captured yet today. Tap any capture button mid-commute (flag, insight, note, question, learn) and it'll appear here.</div>
+      ) : (
+        items.map((item) => {
+          const meta = CAPTURE_TYPE_META[item.type] || { icon: "•", label: item.type };
+          const onClick = item.type === "errata"
+            ? () => onJump(item.module_id, item.timestamp_seconds || 0)
+            : (item.url ? () => window.open(item.url, "_blank") : undefined);
+          return (
+            <div key={item.id} className={"card" + (onClick ? " card-tap" : "")} onClick={onClick}>
+              <div className="row">
+                <div className="row-main">
+                  <div className="row-title">{truncate(item.content || "(empty)", 130)}</div>
+                  <div className="row-sub">
+                    {meta.icon} {meta.label}
+                    {item.type === "errata" && item.module_id ? ` · Module ${item.module_id} at ${fmtTime(item.timestamp_seconds || 0)}` : null}
+                  </div>
+                  <div className="row-meta">{timeAgo(item.created_at)}</div>
+                </div>
+                {onClick ? <span className="row-chevron">↗</span> : null}
+              </div>
+            </div>
+          );
+        })
+      )}
+
+      {/* Deep-link panel — always visible for ledgers that live outside today's view */}
+      <div className="section">
         <div className="section-icon">📂</div>
         <div className="section-title">Open a ledger</div>
       </div>
@@ -1174,7 +1369,7 @@ function CapturesScreen({ refreshKey, onJump }) {
           <div className="capture-link-icon">💡</div>
           <div className="capture-link-text">
             <div className="capture-link-name">Insights</div>
-            <div className="capture-link-desc">Approve or reject pending claims</div>
+            <div className="capture-link-desc">Approve or reject pending claims · all-time</div>
           </div>
           <span className="capture-link-arrow">→</span>
         </a>
@@ -1189,44 +1384,20 @@ function CapturesScreen({ refreshKey, onJump }) {
         <a className="capture-link" href={NOTION_LINKS.oq} target="_blank" style={{ borderTop: "0.5px solid var(--line)" }}>
           <div className="capture-link-icon">❓</div>
           <div className="capture-link-text">
-            <div className="capture-link-name">Open questions</div>
-            <div className="capture-link-desc">In Notion · triage and answer</div>
+            <div className="capture-link-name">Open questions queue</div>
+            <div className="capture-link-desc">In Notion · all-time triage and answer</div>
           </div>
           <span className="capture-link-arrow">↗</span>
         </a>
         <a className="capture-link" href={NOTION_LINKS.gaps} target="_blank" style={{ borderTop: "0.5px solid var(--line)" }}>
           <div className="capture-link-icon">🎓</div>
           <div className="capture-link-text">
-            <div className="capture-link-name">Things to learn</div>
-            <div className="capture-link-desc">In Notion · pending series</div>
+            <div className="capture-link-name">Things to learn queue</div>
+            <div className="capture-link-desc">In Notion · all-time pending series</div>
           </div>
           <span className="capture-link-arrow">↗</span>
         </a>
       </div>
-
-      <div className="section">
-        <div className="section-icon">🚩</div>
-        <div className="section-title">Flagged claims (inline)</div>
-        <div className="section-meta">{errata.length}</div>
-      </div>
-      {loading ? <div className="empty"><div className="spinner"></div></div>
-       : error ? <div className="empty">⚠ {error}</div>
-       : errata.length === 0 ? (
-        <div className="empty"><div className="empty-icon">💭</div>No flags yet. While listening, tap 🚩 on the player to flag a claim at the current moment.</div>
-      ) : (
-        errata.map((e) => (
-          <div key={e.id} className="card card-tap" onClick={() => onJump(e.module_id, e.timestamp_seconds || 0)}>
-            <div className="row">
-              <div className="row-main">
-                <div className="row-title">{truncate(e.notes, 120)}</div>
-                <div className="row-sub">Module {e.module_id} · flagged at {fmtTime(e.timestamp_seconds || 0)}</div>
-                <div className="row-meta">{timeAgo(e.created_at)}</div>
-              </div>
-              <span className="row-chevron">↗</span>
-            </div>
-          </div>
-        ))
-      )}
     </div>
   );
 }
@@ -1253,8 +1424,8 @@ function MiniPlayer({ playing, audioRef, onExpand, onStop }) {
         <div className="mini-title">{playing.title}</div>
         <div className="mini-sub">{playing.kind === "brief" ? "Brief" : "Episode"} · {playing.series}</div>
       </div>
-      <button className="mini-btn" onClick={toggle}>{isPlaying ? "⏸" : "▶"}</button>
-      <button className="mini-btn" onClick={(e) => { e.stopPropagation(); onStop(); }}>×</button>
+      <button className="mini-btn" onClick={toggle} aria-label={isPlaying ? "Pause" : "Play"}>{isPlaying ? "⏸" : "▶"}</button>
+      <button className="mini-btn" onClick={(e) => { e.stopPropagation(); onStop(); }} aria-label="Stop and close player">×</button>
     </div>
   );
 }
@@ -1276,7 +1447,7 @@ function FlagSheet({ moduleId, timestamp, onClose, onDone, showToast }) {
   };
   return (
     <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <div className="sheet" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-handle"></div>
         <div className="sheet-title">🚩 Flag a claim</div>
         <div className="sheet-sub">At {fmtTime(timestamp)} — what's wrong with what you just heard?</div>
@@ -1375,14 +1546,14 @@ function ReactSheet({ moduleId, onClose, onDone, showToast }) {
 
   return (
     <div className="sheet-backdrop" onClick={() => phase !== "submitting" && onClose()}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <div className="sheet" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-handle"></div>
         <div className="sheet-title">🎙 React to this</div>
         {phase === "recording" && (
           <>
             <div className="sheet-sub">Speak your reaction. Tap to stop.</div>
             <div className="sheet-record-wrap">
-              <button className="sheet-record-btn recording" onClick={stopRecord}>⏹</button>
+              <button className="sheet-record-btn recording" onClick={stopRecord} aria-label="Stop recording">⏹</button>
               <div className="sheet-record-hint">Recording…</div>
             </div>
             <textarea className="sheet-input" value={transcript} readOnly placeholder="…" />
@@ -1507,7 +1678,12 @@ function CaptureSheet({ kind, sourceInfo, onClose, onDone, showToast }) {
       const payload = meta.payload(text.trim(), sourceInfo);
       const res = await API[meta.api](payload);
       let msg = meta.title + " saved";
-      if (res && res.learning_gap_id) msg = "Learning gap captured · we'll start building your series.";
+      if (res && res.learning_gap_id) {
+        msg = "Learning gap captured · we'll start building your series.";
+        // D4: persist a tracking record so HomeScreen can show the build
+        // progress until the first brief lands.
+        try { trackingAdd(res.learning_gap_id, text.trim().slice(0, 80)); } catch (_) {}
+      }
       onDone(msg);
     } catch (e) {
       if (e.message && e.message.includes("mac_offline")) {
@@ -1521,7 +1697,7 @@ function CaptureSheet({ kind, sourceInfo, onClose, onDone, showToast }) {
 
   return (
     <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <div className="sheet" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-handle"></div>
         <div className="sheet-title">{meta.icon} {meta.title}</div>
         <div className="sheet-sub">At {fmtTime(sourceInfo.timestamp)} in {sourceInfo.kind === "brief" ? "this brief" : "this episode"}.</div>
@@ -1552,8 +1728,27 @@ function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRef
   const [captureOpen, setCaptureOpen] = useState(null);
   const [approving, setApproving] = useState(false);
   // Post-approve state: "idle" | "approving" | "audio-cooking" | "audio-ready"
+  //                   | "audio-failed" (D1) | "audio-taking-longer" (F14)
+  //                   | "audio-check-failed" | "audio-check-auth"
   const [postApprove, setPostApprove] = useState("idle");
   const [postApproveAudioUrl, setPostApproveAudioUrl] = useState(null);
+  const [postApproveError, setPostApproveError] = useState(null);
+  const [retryingAudio, setRetryingAudio] = useState(false);
+
+  const retryAudio = async () => {
+    if (!playing.moduleId) return;
+    setRetryingAudio(true);
+    try {
+      await API.retryModuleTts(playing.moduleId);
+      showToast && showToast("Audio generation restarted…");
+      setPostApproveError(null);
+      setPostApprove("audio-cooking");
+    } catch (e) {
+      showToast && showToast("Retry failed: " + e.message);
+    } finally {
+      setRetryingAudio(false);
+    }
+  };
 
   useEffect(() => {
     const a = audioRef.current;
@@ -1585,6 +1780,29 @@ function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRef
   const toggle = () => { const a = audioRef.current; if (!a) return; if (a.paused) a.play(); else a.pause(); };
   const skip = (d) => { const a = audioRef.current; if (!a) return; a.currentTime = Math.max(0, Math.min(a.duration || 0, a.currentTime + d)); };
   const seekTo = (f) => { const a = audioRef.current; if (!a || !a.duration) return; a.currentTime = f * a.duration; };
+
+  // Keyboard shortcuts (D7): Space toggles play/pause, ←/→ skip 15s,
+  // Escape closes the topmost open surface (sheet first, then overlay).
+  // Ignored when a text input is focused so typing in a capture sheet works.
+  useEffect(() => {
+    const onKey = (e) => {
+      const tgt = e.target;
+      const tag = tgt && tgt.tagName;
+      const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (tgt && tgt.isContentEditable);
+      if (e.key === "Escape") {
+        if (flagOpen) { setFlagOpen(false); e.preventDefault(); return; }
+        if (reactOpen) { setReactOpen(false); e.preventDefault(); return; }
+        if (captureOpen) { setCaptureOpen(null); e.preventDefault(); return; }
+        if (!isTyping) { onClose(); e.preventDefault(); return; }
+      }
+      if (isTyping || flagOpen || reactOpen || captureOpen) return;
+      if (e.key === " " || e.code === "Space") { toggle(); e.preventDefault(); return; }
+      if (e.key === "ArrowLeft")  { skip(-15); e.preventDefault(); return; }
+      if (e.key === "ArrowRight") { skip(15);  e.preventDefault(); return; }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [flagOpen, reactOpen, captureOpen]);
 
   const handleApprove = async () => {
     setApproving(true);
@@ -1622,6 +1840,14 @@ function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRef
           setPostApproveAudioUrl(API.moduleAudioUrl(me.id));
           return;
         }
+        // D1: backend-surfaced failure trumps the polling timeout. If
+        // audio_last_error is populated AND we've already retried at least
+        // once, treat it as a recoverable failure with a retry path.
+        if (!cancelled && me && me.audio_last_error && (me.audio_attempts_count || 0) >= 1 && !me.audio_r2_key) {
+          setPostApproveError(me.audio_last_error);
+          setPostApprove("audio-failed");
+          return;
+        }
       } catch (e) {
         if (e && e.code === "AUTH") {
           if (!cancelled) setPostApprove("audio-check-auth");
@@ -1646,7 +1872,7 @@ function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRef
   return (
     <div className="player-overlay">
       <div className="player-head">
-        <button className="player-head-close" onClick={onClose}>↓</button>
+        <button className="player-head-close" onClick={onClose} aria-label="Minimize player">↓</button>
         <div className="player-head-title">{isBrief ? "Review brief" : playing.isDue ? "Re-listen · due now" : "Episode"}</div>
         <div style={{ width: 40 }}></div>
       </div>
@@ -1675,7 +1901,7 @@ function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRef
 
         <div className="transport">
           <button className="transport-skip" onClick={() => skip(-15)} aria-label="Back 15s">⏮</button>
-          <button className="transport-play" onClick={toggle}>{isPlaying ? "⏸" : "▶"}</button>
+          <button className="transport-play" onClick={toggle} aria-label={isPlaying ? "Pause" : "Play"}>{isPlaying ? "⏸" : "▶"}</button>
           <button className="transport-skip" onClick={() => skip(15)} aria-label="Forward 15s">⏭</button>
         </div>
 
@@ -1774,6 +2000,24 @@ function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRef
             <button className="play-btn-secondary" onClick={() => window.location.reload()}>
               Sign in / reload
             </button>
+          </div>
+        )}
+        {postApprove === "audio-failed" && (
+          <div style={{ padding: "16px", borderRadius: "var(--radius)", background: "rgba(163,45,45,.07)", border: "0.5px solid var(--red)" }}>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6, color: "var(--red)" }}>⚠ Audio generation failed</div>
+            <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 10 }}>
+              The full episode couldn't be generated. {postApproveError ? <span style={{ fontStyle: "italic" }}>Reason: {postApproveError}.</span> : null} You can retry — the system will try again with a fresh attempt.
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="play-btn" onClick={retryAudio} disabled={retryingAudio}>
+                {retryingAudio ? "Restarting…" : "↻ Retry audio"}
+              </button>
+              {playing.gapId && (
+                <button className="play-btn-secondary" onClick={() => { onClose(); onOpenSeries && onOpenSeries(playing.gapId); }}>
+                  Open series view
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -1945,6 +2189,9 @@ function App() {
   const [playerOpen, setPlayerOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [preparingAudio, setPreparingAudio] = useState(null); // {msg, sub}
+  const [tracked, setTracked] = useState(() => trackingLoad());
+  const refreshTracked = useCallback(() => setTracked(trackingLoad()), []);
+  const untrackGap = useCallback((gap_id) => setTracked(trackingRemove(gap_id)), []);
   const audioRef = useRef(null);
   const blobUrlRef = useRef(null);
 
@@ -1973,7 +2220,12 @@ function App() {
     setNavStack([]);
   }, []);
 
-  const bumpRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+  const bumpRefresh = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+    // D4: re-read tracked gaps from localStorage so a new capture surfaces
+    // its banner immediately after the sheet closes.
+    setTracked(trackingLoad());
+  }, []);
 
   function playAudio(playingState, seekTo) {
     // Revoke any previous blob URL — prevents leak when switching from
@@ -2046,6 +2298,8 @@ function App() {
   if (view.name === "home") {
     viewEl = <HomeScreen
       refreshKey={refreshKey}
+      tracked={tracked}
+      onUntrack={untrackGap}
       onOpenSeries={(gapId, gapTitle) => navTo({ name: "series", gapId, gapTitle })}
       onPlayDue={(item) => playAudio({
         kind: "module-due", moduleId: item.module_id, audioUrl: API.moduleAudioUrl(item.module_id),
@@ -2195,7 +2449,7 @@ function App() {
         </div>
       )}
 
-      {toast && <div className="toast">{toast.msg}</div>}
+      {toast && <div className="toast" role="status" aria-live="polite">{toast.msg}</div>}
     </div>
   );
 }

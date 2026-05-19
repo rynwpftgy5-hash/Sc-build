@@ -29,10 +29,21 @@ export interface ModuleAudioResult {
 }
 
 export async function generateModuleAudio(env: ModuleAudioEnv, module_id: number): Promise<ModuleAudioResult> {
+	// D1 (audio failure surface): stamp attempt counter + timestamp at start so
+	// the UI can show "attempted N times" mid-cook, not just on terminal failure.
+	const nowS = Math.floor(Date.now() / 1000);
+	await env.UC3_DB
+		.prepare("UPDATE learning_modules SET audio_attempts_count = audio_attempts_count + 1, audio_last_attempt_at = ? WHERE id = ?")
+		.bind(nowS, module_id)
+		.run()
+		.catch(() => {});
+
 	const transcript = await getTranscript(env.TTS_CACHE, module_id);
 	if (!transcript) {
-		await logVerification(env.UC3_DB, { module_id, stage: "S11-tts", ok: false, error_text: "no polished transcript in R2" });
-		return { ok: false, module_id, error: "no polished transcript in R2" };
+		const errText = "no polished transcript in R2";
+		await logVerification(env.UC3_DB, { module_id, stage: "S11-tts", ok: false, error_text: errText });
+		await env.UC3_DB.prepare("UPDATE learning_modules SET audio_last_error = ? WHERE id = ?").bind(errText, module_id).run().catch(() => {});
+		return { ok: false, module_id, error: errText };
 	}
 
 	// §8.4a.23 — voice resolution cascade:
@@ -55,13 +66,16 @@ export async function generateModuleAudio(env: ModuleAudioEnv, module_id: number
 
 	const r = await ttsChunkedToBuffer(transcript, voice_id, ELEVENLABS_DEFAULT_MODEL, undefined, env.ELEVENLABS_API_KEY);
 	if (!r.ok) {
+		const errText = `TTS failed: ${r.error}`;
 		await logVerification(env.UC3_DB, { module_id, stage: "S11-tts", ok: false, error_text: r.error });
-		return { ok: false, module_id, error: `TTS failed: ${r.error}` };
+		await env.UC3_DB.prepare("UPDATE learning_modules SET audio_last_error = ? WHERE id = ?").bind(errText, module_id).run().catch(() => {});
+		return { ok: false, module_id, error: errText };
 	}
 
 	const key = await putModuleAudio(env.TTS_CACHE, module_id, r.buf);
+	// Success: stamp audio_r2_key + clear any prior error.
 	await env.UC3_DB
-		.prepare("UPDATE learning_modules SET audio_r2_key = ? WHERE id = ?")
+		.prepare("UPDATE learning_modules SET audio_r2_key = ?, audio_last_error = NULL WHERE id = ?")
 		.bind(key, module_id)
 		.run();
 

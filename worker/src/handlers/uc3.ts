@@ -277,8 +277,8 @@ export async function handleUc3ModuleErrataList(
 // in a single batched call and backfill D1 so subsequent calls are fast.
 const LEARNING_GAPS_QUEUE_DB_ID = "35ebac9a-7841-41bc-91fd-224b58feb9a3";
 
-async function fetchAllNotionGapTitles(notionToken: string): Promise<Map<string, string>> {
-	const map = new Map<string, string>();
+async function fetchAllNotionGapTitles(notionToken: string): Promise<Map<string, { title: string; fullId: string }>> {
+	const map = new Map<string, { title: string; fullId: string }>();
 	let next: string | null | undefined = undefined;
 	while (true) {
 		const body: Record<string, unknown> = { page_size: 100, sorts: [{ timestamp: "created_time", direction: "descending" }] };
@@ -296,10 +296,11 @@ async function fetchAllNotionGapTitles(notionToken: string): Promise<Map<string,
 		if (!resp.ok) break;
 		const json = (await resp.json()) as { results?: Array<{ id: string; properties?: any }>; has_more?: boolean; next_cursor?: string | null };
 		for (const r of json.results ?? []) {
-			const shortId = String(r.id).replace(/-/g, "").slice(-8);
+			const fullId = String(r.id);
+			const shortId = fullId.replace(/-/g, "").slice(-8);
 			const titleArr = r.properties?.["Gap Title"]?.title || [];
 			const title = titleArr.map((t: any) => t.plain_text || "").join("").trim();
-			if (title) map.set(shortId, title);
+			if (title) map.set(shortId, { title, fullId });
 		}
 		if (!json.has_more || !json.next_cursor) break;
 		next = json.next_cursor;
@@ -352,7 +353,8 @@ export async function handleUc3ListGaps(
 
 		// Lazy backfill: if any rows have NULL gap_title, fetch all titles from
 		// Notion once and patch them. The Learning Gaps Queue is small (<50 rows)
-		// so a single paginated query is bounded.
+		// so a single paginated query is bounded. D3: also persists notion_page_id
+		// so pipeline-status can emit a gap-specific deep link.
 		const needsTitle = rows.filter((row) => !row.gap_title);
 		if (needsTitle.length > 0 && env.NOTION_TOKEN) {
 			try {
@@ -360,15 +362,14 @@ export async function handleUc3ListGaps(
 				for (const row of needsTitle) {
 					const t = titles.get(row.gap_id);
 					if (t) {
-						row.gap_title = t;
-						// Write-through to D1 so the next call is fast (no Notion roundtrip).
+						row.gap_title = t.title;
 						await env.UC3_DB
 							.prepare(
-								`INSERT INTO pipeline_state (gap_id, stage, status, retry_count, started_at, updated_at, gap_title)
-								 VALUES (?, COALESCE((SELECT stage FROM pipeline_state WHERE gap_id = ?), 'S0'), COALESCE((SELECT status FROM pipeline_state WHERE gap_id = ?), 'completed'), 0, ?, ?, ?)
-								 ON CONFLICT(gap_id) DO UPDATE SET gap_title = excluded.gap_title, updated_at = excluded.updated_at`,
+								`INSERT INTO pipeline_state (gap_id, stage, status, retry_count, started_at, updated_at, gap_title, notion_page_id)
+								 VALUES (?, COALESCE((SELECT stage FROM pipeline_state WHERE gap_id = ?), 'S0'), COALESCE((SELECT status FROM pipeline_state WHERE gap_id = ?), 'completed'), 0, ?, ?, ?, ?)
+								 ON CONFLICT(gap_id) DO UPDATE SET gap_title = excluded.gap_title, notion_page_id = excluded.notion_page_id, updated_at = excluded.updated_at`,
 							)
-							.bind(row.gap_id, row.gap_id, row.gap_id, row.first_created_at, Math.floor(Date.now() / 1000), t)
+							.bind(row.gap_id, row.gap_id, row.gap_id, row.first_created_at, Math.floor(Date.now() / 1000), t.title, t.fullId)
 							.run();
 					}
 				}
@@ -396,6 +397,172 @@ export async function handleUc3ListGaps(
 		return { ok: true, status: 200, result: { gaps: augmented, count: augmented.length } };
 	} catch (err) {
 		return { ok: false, status: 502, error: `list-gaps failed: ${(err as Error).message}` };
+	}
+}
+
+// D2 — GET /api/uc3/captures-today
+// Cross-source aggregator: every capture (errata + gap + OQ) created in the
+// last 24h, returned as a chronological timeline. Lets the player Captures
+// tab show inline what you captured today without making the user leave the
+// surface to verify it landed. Insights + RNs live on the il-server Mac path
+// today; they're surfaced as deep links rather than inlined, to keep this
+// endpoint cloud-only and fast.
+const NOTION_LEARNING_GAPS_QUEUE_DB = "35ebac9a-7841-41bc-91fd-224b58feb9a3";
+const NOTION_OPEN_QUESTIONS_DB = "35d48344-93df-8104-b563-d9322d6d0f9d";
+
+async function queryNotionRecent(dbId: string, cutoffIso: string, notionToken: string): Promise<any[]> {
+	try {
+		const resp = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
+			method: "POST",
+			headers: { Authorization: `Bearer ${notionToken}`, "Notion-Version": "2022-06-28", "Content-Type": "application/json" },
+			body: JSON.stringify({
+				page_size: 25,
+				sorts: [{ timestamp: "created_time", direction: "descending" }],
+				filter: { timestamp: "created_time", created_time: { on_or_after: cutoffIso } },
+			}),
+			signal: AbortSignal.timeout(10_000),
+		});
+		if (!resp.ok) return [];
+		const json = (await resp.json()) as { results?: any[] };
+		return json.results || [];
+	} catch (_) {
+		return [];
+	}
+}
+
+function notionTitleText(prop: any): string {
+	if (!prop) return "";
+	const arr = prop.title || prop.rich_text || [];
+	return arr.map((t: any) => t.plain_text || "").join("").trim();
+}
+
+export async function handleUc3CapturesToday(
+	_url: URL,
+	env: Uc3HandlerEnv,
+): Promise<{ ok: boolean; status?: number; result?: unknown; error?: string }> {
+	const cutoffS = Math.floor(Date.now() / 1000) - 86400;
+	const cutoffIso = new Date(cutoffS * 1000).toISOString();
+
+	try {
+		const [errataR, gapsR, oqsR] = await Promise.all([
+			env.UC3_DB
+				.prepare("SELECT id, module_id, notes, timestamp_seconds, created_at FROM module_errata WHERE created_at >= ? ORDER BY created_at DESC LIMIT 50")
+				.bind(cutoffS)
+				.all<{ id: number; module_id: number; notes: string; timestamp_seconds: number | null; created_at: number }>(),
+			env.NOTION_TOKEN ? queryNotionRecent(NOTION_LEARNING_GAPS_QUEUE_DB, cutoffIso, env.NOTION_TOKEN) : Promise.resolve([]),
+			env.NOTION_TOKEN ? queryNotionRecent(NOTION_OPEN_QUESTIONS_DB, cutoffIso, env.NOTION_TOKEN) : Promise.resolve([]),
+		]);
+
+		const items: Array<{
+			type: "errata" | "gap" | "oq";
+			id: string;
+			content: string;
+			created_at: number;
+			module_id?: number;
+			timestamp_seconds?: number | null;
+			url?: string;
+		}> = [];
+
+		for (const e of (errataR.results ?? [])) {
+			items.push({
+				type: "errata",
+				id: `errata-${e.id}`,
+				content: e.notes,
+				module_id: e.module_id,
+				timestamp_seconds: e.timestamp_seconds,
+				created_at: e.created_at,
+			});
+		}
+		for (const g of gapsR) {
+			const props = g.properties || {};
+			const content = notionTitleText(props["Gap Title"]) || "(untitled gap)";
+			items.push({
+				type: "gap",
+				id: `gap-${g.id}`,
+				content,
+				url: g.url,
+				created_at: Math.floor(new Date(g.created_time).getTime() / 1000),
+			});
+		}
+		for (const q of oqsR) {
+			const props = q.properties || {};
+			const content = notionTitleText(props["Question"]) || notionTitleText(props["Title"]) || notionTitleText(props["Name"]) || "(untitled question)";
+			items.push({
+				type: "oq",
+				id: `oq-${q.id}`,
+				content,
+				url: q.url,
+				created_at: Math.floor(new Date(q.created_time).getTime() / 1000),
+			});
+		}
+
+		items.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+
+		const counts = {
+			errata: items.filter((i) => i.type === "errata").length,
+			gap: items.filter((i) => i.type === "gap").length,
+			oq: items.filter((i) => i.type === "oq").length,
+		};
+
+		return { ok: true, status: 200, result: { items, counts, cutoff: cutoffS } };
+	} catch (err) {
+		return { ok: false, status: 502, error: `captures-today failed: ${(err as Error).message}` };
+	}
+}
+
+// D6 — GET /api/uc3/list-briefs-ready
+// Single D1 query returning all brief-ready (not-yet-approved) modules
+// with everything HomeScreen needs to render them. Replaces the N-round-trip
+// pattern where HomeScreen called pipeline-status once per gap to find briefs.
+// Returns audio_bytes so the client can estimate audio duration (D5).
+export async function handleUc3ListBriefsReady(
+	_url: URL,
+	env: Uc3HandlerEnv,
+): Promise<{ ok: boolean; status?: number; result?: unknown; error?: string }> {
+	try {
+		const r = await env.UC3_DB
+			.prepare(
+				`SELECT lm.id AS module_id,
+				        lm.gap_id,
+				        lm.position_in_series,
+				        lm.learning_objective,
+				        lm.audio_r2_key AS module_audio_r2_key,
+				        rb.audio_bytes AS brief_audio_bytes,
+				        rb.voice_id AS brief_voice_id,
+				        (SELECT gap_title FROM pipeline_state ps WHERE ps.gap_id = lm.gap_id) AS gap_title,
+				        (SELECT COUNT(*) FROM learning_modules lm2 WHERE lm2.gap_id = lm.gap_id) AS total_in_series
+				 FROM learning_modules lm
+				 JOIN review_briefs rb ON rb.module_id = lm.id
+				 WHERE rb.audio_r2_key IS NOT NULL
+				   AND lm.status != 'approved'
+				 ORDER BY lm.created_at DESC
+				 LIMIT 12`,
+			)
+			.all<{
+				module_id: number;
+				gap_id: string;
+				position_in_series: number;
+				learning_objective: string;
+				module_audio_r2_key: string | null;
+				brief_audio_bytes: number | null;
+				brief_voice_id: string | null;
+				gap_title: string | null;
+				total_in_series: number;
+			}>();
+		const rows = (r.results ?? []).map((row) => ({
+			module_id: row.module_id,
+			gap_id: row.gap_id,
+			gap_title: row.gap_title,
+			learning_objective: row.learning_objective,
+			position: row.position_in_series,
+			total_in_series: row.total_in_series,
+			voice_id: row.brief_voice_id,
+			brief_audio_bytes: row.brief_audio_bytes,
+			has_full_audio: !!row.module_audio_r2_key,
+		}));
+		return { ok: true, status: 200, result: { briefs: rows, count: rows.length } };
+	} catch (err) {
+		return { ok: false, status: 502, error: `list-briefs-ready failed: ${(err as Error).message}` };
 	}
 }
 
@@ -586,6 +753,11 @@ export async function handleUc3PipelineStatus(
 				// audio existed on R2; the UI just never learned about it.
 				audio_r2_key: m.audio_r2_key,
 				voice_id: m.voice_id,
+				// D1: surface audio cooking failure state so the UI can
+				// distinguish "still cooking" from "failed N times".
+				audio_last_error: (m as any).audio_last_error ?? null,
+				audio_attempts_count: (m as any).audio_attempts_count ?? 0,
+				audio_last_attempt_at: (m as any).audio_last_attempt_at ?? null,
 				approved_at: m.approved_at,
 				transcript: transcript ?? undefined,
 				citations: citations.map((c) => ({
@@ -654,16 +826,18 @@ export async function handleUc3PipelineStatus(
 		}),
 	);
 
-	// Pull gap_title from D1 (populated at S0 in W9 UX-fix migration)
+	// Pull gap_title + notion_page_id (D3) from D1 — populated by list-gaps
+	// Notion backfill. Lets the UI deep-link to the specific gap row.
 	const titleRow = await env.UC3_DB
-		.prepare("SELECT gap_title FROM pipeline_state WHERE gap_id = ?")
+		.prepare("SELECT gap_title, notion_page_id FROM pipeline_state WHERE gap_id = ?")
 		.bind(gap_id)
-		.first<{ gap_title: string | null }>();
+		.first<{ gap_title: string | null; notion_page_id: string | null }>();
 	const result: Record<string, unknown> = {
 		ok: true,
 		status: 200,
 		gap_id,
 		gap_title: titleRow?.gap_title ?? null,
+		notion_page_id: titleRow?.notion_page_id ?? null,
 		pipeline: {
 			stage: state.stage,
 			status: state.status,
