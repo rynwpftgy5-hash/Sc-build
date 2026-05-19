@@ -46,6 +46,23 @@ html, body {
 }
 .page-body { padding: 18px 24px 40px; max-width: 1100px; margin: 0 auto; }
 
+/* R8.1: dark mode — respects system preference. Other SpaceSC surfaces
+   have a manual theme picker; system-map is more of a viz dashboard
+   without its own settings page, so we go with prefers-color-scheme. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1f1d18;
+    --color-background-primary: #2a2823;
+    --color-background-secondary: #3a3833;
+    --color-background-tertiary: #4a4843;
+    --color-text-primary: #faf9f5;
+    --color-text-secondary: #c4c2bb;
+    --color-text-tertiary: #888780;
+    --color-border-tertiary: #4a4843;
+    --color-border-secondary: #5a5853;
+  }
+}
+
 /* R6.2: cross-surface nav row — closes F7 so the system map isn't a
    dead-end. Single horizontal row of 9 SpaceSC surfaces. */
 .spacesc-nav {
