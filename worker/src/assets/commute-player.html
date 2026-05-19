@@ -2221,6 +2221,39 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [preparingAudio, setPreparingAudio] = useState(null); // {msg, sub}
   const [tracked, setTracked] = useState(() => trackingLoad());
+  // R6.1: expose audio metadata + transport handlers to the OS so iOS lock
+  // screen / Control Center / AirPods double-tap drive the player. Without
+  // this, lock-screen shows generic audio with no title and no skip controls.
+  useEffect(() => {
+    if (!playing || typeof navigator === "undefined" || !navigator.mediaSession) return;
+    const ms = navigator.mediaSession;
+    try {
+      ms.metadata = new MediaMetadata({
+        title: playing.title || "SpaceSC",
+        artist: playing.series || "SpaceSC",
+        album: playing.kind === "article" ? "Articles" : playing.kind === "brief" ? "Review briefs" : "Episodes",
+      });
+    } catch (_) {}
+    const safeRun = (fn) => { try { fn(); } catch (_) {} };
+    ms.setActionHandler && ms.setActionHandler("play", () => safeRun(() => audioRef.current && audioRef.current.play()));
+    ms.setActionHandler && ms.setActionHandler("pause", () => safeRun(() => audioRef.current && audioRef.current.pause()));
+    ms.setActionHandler && ms.setActionHandler("seekbackward", (d) => safeRun(() => {
+      const a = audioRef.current; if (!a) return;
+      a.currentTime = Math.max(0, a.currentTime - ((d && d.seekOffset) || 15));
+    }));
+    ms.setActionHandler && ms.setActionHandler("seekforward", (d) => safeRun(() => {
+      const a = audioRef.current; if (!a) return;
+      a.currentTime = Math.min(a.duration || 0, a.currentTime + ((d && d.seekOffset) || 15));
+    }));
+    ms.setActionHandler && ms.setActionHandler("stop", () => safeRun(stopAudio));
+    return () => {
+      ["play","pause","seekbackward","seekforward","stop"].forEach(k => {
+        try { ms.setActionHandler && ms.setActionHandler(k, null); } catch (_) {}
+      });
+      try { ms.metadata = null; } catch (_) {}
+    };
+  }, [playing && playing.moduleId, playing && playing.articleId, playing && playing.title]);
+
   // R5.3: surface offline state so the user knows API failures are network,
   // not bugs. navigator.onLine is conservative — false only when the browser
   // is confident it has no connection; some flaky tunnels won't trigger.

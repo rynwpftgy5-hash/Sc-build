@@ -45,9 +45,41 @@ html, body {
   font-size: 13px; color: var(--color-text-secondary);
 }
 .page-body { padding: 18px 24px 40px; max-width: 1100px; margin: 0 auto; }
+
+/* R6.2: cross-surface nav row — closes F7 so the system map isn't a
+   dead-end. Single horizontal row of 9 SpaceSC surfaces. */
+.spacesc-nav {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  padding: 10px 24px; max-width: 1100px; margin: 0 auto;
+  border-bottom: 0.5px solid var(--color-border-tertiary);
+  background: var(--color-background-primary);
+}
+.spacesc-nav a {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 500;
+  text-decoration: none; color: var(--color-text-secondary);
+  background: var(--color-background-secondary);
+  border: 0.5px solid var(--color-border-tertiary);
+  transition: background .12s;
+}
+.spacesc-nav a:hover { background: var(--color-background-tertiary); color: var(--color-text-primary); }
+.spacesc-nav a.active { background: var(--color-text-primary); color: var(--color-background-primary); border-color: var(--color-text-primary); cursor: default; }
+.spacesc-nav a.active:hover { background: var(--color-text-primary); }
 </style>
 </head>
 <body>
+<nav class="spacesc-nav" aria-label="SpaceSC tools">
+  <a href="/uc3">🎧 Commute</a>
+  <a href="/desk">🗂 Desk</a>
+  <a href="/reading">📖 Reading</a>
+  <a href="/corpus">🔍 Corpus</a>
+  <a href="/insights">💎 Insights</a>
+  <a href="/posture">📊 Posture</a>
+  <a href="/pipeline">🩺 Pipeline</a>
+  <a href="/log">📒 Build Log</a>
+  <a href="/system-map" class="active" aria-current="page">🗺 System map</a>
+</nav>
 <div class="page-header">
   <div class="page-title">SpaceSC system map</div>
   <div class="page-sub">The five use cases · what's built, what's queued, what's next. Tap a UC to expand.</div>
