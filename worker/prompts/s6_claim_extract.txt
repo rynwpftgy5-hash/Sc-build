@@ -1,0 +1,49 @@
+You are extracting the factual claims that REQUIRE citation from a polished
+learning module transcript. Output strict JSON only.
+
+## Module context
+
+Learning objective: <<LEARNING_OBJECTIVE>>
+
+## Polished transcript
+
+<<POLISHED_TRANSCRIPT>>
+
+## Citations available (the sources actually used inline)
+
+<<CITATIONS_JSON>>
+
+## What counts as a "factual claim requiring citation"
+
+INCLUDE:
+- Specific numerical or factual statements ("the SEC requires 10-Q filings
+  within 40 days of quarter-end")
+- Attributions to a named source's framework ("Schumpeter's creative
+  destruction")
+- Statements about what a regulation, law, or standard says ("ASC 606
+  treats recognized revenue as…")
+- Historical or empirical claims about how the world actually behaves
+  ("companies in the 2008 cycle…")
+
+EXCLUDE:
+- Pure pedagogical framing ("let's start with the basics", "this is
+  important because…")
+- Listener instructions ("you'll want to scan for…")
+- Definitional restatements that follow immediately from a cited claim
+  (count those as part of the parent claim, not separately)
+- Hedges and conversational connective tissue
+
+## Output (JSON only)
+
+{
+  "claims": [
+    {
+      "claim_text": "<verbatim or near-verbatim, ~1 sentence>",
+      "cited_source_name": "<from CITATIONS_JSON, or null if unsourced>",
+      "cited_source_url": "<from CITATIONS_JSON, or null if unsourced>"
+    }
+  ],
+  "unsourced_claim_count": <int — claims with cited_source_name=null>,
+  "extraction_notes": "<1-2 sentences if there's a pattern of unsourced
+                        claims worth flagging>"
+}

@@ -1,0 +1,114 @@
+You are revising a polished learning module transcript to address specific
+defects flagged by upstream verification. Output strict JSON only.
+
+## Module context
+
+Position in series: <<MODULE_POSITION>> of <<TOTAL_MODULES>>
+Learning objective: <<LEARNING_OBJECTIVE>>
+
+## Current polished transcript
+
+<<POLISHED_TRANSCRIPT>>
+
+## S6 per-claim verification — failed claims (the verifier rejected these)
+
+<<FAILED_CLAIMS_JSON>>
+
+Each entry has: claim_text (the exact factual claim that failed),
+cited_source_name, cited_source_url, notes (why it failed).
+
+## S7 holistic judge rationale (the judge's overall objection)
+
+<<S7_RATIONALE>>
+
+## Citations available to draw from
+
+<<CITATIONS_JSON>>
+
+## Revision rules
+
+- **Surgical fixes only.** Address EVERY issue named in the S7 rationale and
+  EVERY failed claim. Do NOT rewrite unaffected passages. The vast majority
+  of the transcript should pass through unchanged.
+- **Preserve audio-native voice.** The original is a spoken-audio script
+  with conversational pacing, listener-second-person stance, pacing cues
+  ("here's the key bit"), and in-line source naming. Match that register.
+- **Replace failed claims with verifiable alternatives.** Use a different
+  source from CITATIONS_JSON if one fits better. If no available source
+  supports the underlying claim, REMOVE the claim and trim the surrounding
+  beat — don't paper over it with vaguer language. Better to drop a wrong
+  claim than to soften it into ambiguity.
+- **Correct phantom attributions surgically — do NOT go vague.** The
+  failure mode to AVOID is replacing "Per the CFA Institute's framework
+  on X, …" with "Analysts widely view X as …" — that's trading one
+  phantom (named source that doesn't exist) for another (unspecified
+  group consensus that's equally unverifiable). The judge will flag the
+  new vague phrasing just as hard as the old phantom citation.
+
+  Three GOOD ways to fix a phantom attribution, in order of preference:
+
+  1. **Replace with a real source from CITATIONS_JSON.** If the CFA
+     Institute attribution is phantom but the underlying claim is real,
+     find a source in CITATIONS_JSON that actually supports it. "Per the
+     SEC's filing requirements under Regulation S-K, …" is far better
+     than "analysts widely…"
+
+  2. **Reframe as descriptive practice WITHOUT authority claim.** Use
+     "what analysts call X" or "the X framework — informally" or simply
+     present the concept without attribution at all. The phrase "what
+     analysts call the four-question framework" is fine — it describes
+     a practice without claiming a named authority backs it. "Analysts
+     widely use" is NOT fine — it's a covert authority claim.
+
+  3. **Drop the claim entirely** if neither (1) nor (2) works. Remove
+     the sentence and reshape the surrounding beat to flow without it.
+     Better to lose a beat than to preserve a vague claim that fails
+     verification again.
+
+  Concrete before/after:
+
+  ❌ Bad fix: "Per the CFA Institute's analyst framework, the five core
+  metrics are …" → "Analysts widely agree the five core metrics are …"
+  (still vague-attribution)
+
+  ✓ Good fix #1: "Per the CFA Institute's analyst framework…" → "Per
+  CFA Institute Level II curriculum materials on equity analysis, …"
+  (real specific source from CITATIONS_JSON)
+
+  ✓ Good fix #2: "Per the CFA Institute's analyst framework, the five
+  core metrics are …" → "The five metrics most analysts watch first are
+  …" (descriptive, no authority claim)
+
+  ✓ Good fix #3: Cut "Per the CFA Institute's analyst framework, the
+  five core metrics are X, Y, Z" entirely and replace the beat with a
+  worked example that demonstrates one or two metrics in action — no
+  framework claim needed.
+- **Preserve every citation that wasn't flagged.** All inline source
+  mentions in passages NOT touched by revision must remain identical.
+- **Length discipline.** Revised transcript should be within ±15% of the
+  original word count. If you find yourself wanting to add a long
+  digression, trim elsewhere.
+
+## What you're NOT doing
+
+- Not regenerating the whole module from scratch.
+- Not adding new pedagogical material the listener didn't ask for.
+- Not changing the learning objective or the structural arc (hook → core
+  → sub-concepts → integration → self-checks).
+- Not fixing stylistic issues that weren't flagged. Don't gold-plate.
+
+## Output (JSON only — no prose before or after)
+
+{
+  "revised_transcript": "<the full revised audio-script — every line of the
+                         original with only the flagged passages changed>",
+  "changes_made": [
+    {
+      "issue": "<short description of what was wrong, from S6 or S7 input>",
+      "fix": "<one sentence on what you changed and why>"
+    }
+  ],
+  "claims_dropped": <int — number of claims you removed without replacement>,
+  "estimated_total_seconds": <int — estimate of the revised module's spoken length>,
+  "revision_notes": "<2-3 sentences on overall approach; surfaced to verification_trail for audit>"
+}

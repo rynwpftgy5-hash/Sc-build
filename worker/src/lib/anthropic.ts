@@ -31,7 +31,13 @@ export interface AnthropicCallResult {
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_TOKENS = 4096;
 
-export async function callAnthropic(input: AnthropicCallInput): Promise<AnthropicCallResult> {
+// HTTP statuses worth retrying once with a short backoff. 524 is Cloudflare's
+// upstream timeout (observed empirically on W5 dry-run #16 — 3 of 5 revision
+// calls hit it intermittently). 429/502/503 are standard transient errors.
+const RETRYABLE_STATUSES = new Set([429, 502, 503, 524]);
+const RETRY_BACKOFF_MS = 5_000;
+
+async function doAnthropicFetch(input: AnthropicCallInput): Promise<AnthropicCallResult> {
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 	const reqBody: Record<string, unknown> = {
@@ -73,6 +79,18 @@ export async function callAnthropic(input: AnthropicCallInput): Promise<Anthropi
 	} finally {
 		clearTimeout(timer);
 	}
+}
+
+export async function callAnthropic(input: AnthropicCallInput): Promise<AnthropicCallResult> {
+	const first = await doAnthropicFetch(input);
+	if (first.ok || !first.status || !RETRYABLE_STATUSES.has(first.status)) return first;
+	// Retry once with backoff on transient upstream errors.
+	await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS));
+	const second = await doAnthropicFetch(input);
+	if (!second.ok && second.error) {
+		second.error = `[retry after ${first.status}] ${second.error}`;
+	}
+	return second;
 }
 
 export function extractJson<T = unknown>(text: string): T | null {

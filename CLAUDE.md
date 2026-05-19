@@ -43,6 +43,32 @@ Things that intentionally do NOT live in this repo:
 - **Plan-mode discipline at every pause-for-Campbell gate** (per ADR-005
   once authored). Long-running or structural changes propose before they
   execute; the gate exists so the human review surface stays narrow.
+- **UI build discipline** (per [ADR-024](docs/adr/0024-ui-build-discipline.md)).
+  Before any work that touches a user-facing surface, follow the four-part
+  protocol — verbatim, in order:
+  1. **Charter + Persona + thinking template** (Part 1). State a
+     one-sentence charter (*"explore X with Y to discover whether the user
+     can reach end-state Z"*). Name the persona being tested as
+     (commute Campbell / desk Campbell). Then answer the six framing
+     questions. Fetch the live system map at
+     <https://spacesc-mcp.75xnd2784n.workers.dev/system-map> to identify
+     which use case owns the work.
+  2. **Self-audit checklist** (Part 2) — three sub-parts: integrity
+     checks (10), tours (Feature / Money / Landmark / Back-alley /
+     Saboteur / All-nighter / Garbage-collector — pick deliberately),
+     SFDIPOT coverage walk, and oracles (Claims + Purpose load-bearing).
+     Find issues and fix them in the same turn; do not surface a bug list
+     as a decision for the user.
+  3. **Past-failure register** (Part 3) — scan F1–F14 for repeating
+     patterns.
+  4. **Session debrief** (Part 4) — paste the structured debrief block
+     at the end of the turn. The "User-outcome reach" line is
+     load-bearing: *reached / partially reached / blocked.*
+
+  The discipline exists because UI work in this repo has historically
+  regressed across iterations when these steps were skipped, and because
+  *"tests pass"* is not the same as *"the user actually completed the
+  thing they came to do."*
 - **§8.11 Always-On Architecture Principle**: cloud-side substrate by
   default. New capabilities live on Cloudflare Workers, not on a laptop
   that has to be awake. Local-only components are a last resort and

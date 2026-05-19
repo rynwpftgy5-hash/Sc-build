@@ -3,7 +3,45 @@ import { McpAgent } from "agents/mcp";
 import { z } from "zod";
 // @ts-expect-error — Wrangler Text rule (wrangler.jsonc)
 import COMMUTE_PLAYER_HTML from "./assets/commute-player.html";
-import { handleUc3PipelineRun, handleUc3PipelineCancel, handleUc3PipelineStatus } from "./handlers/uc3";
+// v5.1: SpaceSC tool surfaces co-hosted with the player so the NavMenu resolves
+// @ts-expect-error — Wrangler Text rule
+import DESK_HTML from "./assets/desk.html";
+// 2026-05-19: classic reading workspace (was /desk in v5.1; now standalone)
+// @ts-expect-error — Wrangler Text rule
+import READING_HTML from "./assets/reading.html";
+// @ts-expect-error — Wrangler Text rule
+import CORPUS_HTML from "./assets/corpus.html";
+// @ts-expect-error — Wrangler Text rule
+import INSIGHTS_HTML from "./assets/insights.html";
+// @ts-expect-error — Wrangler Text rule
+import POSTURE_HTML from "./assets/posture.html";
+// @ts-expect-error — Wrangler Text rule
+import PIPELINE_HTML from "./assets/pipeline.html";
+// @ts-expect-error — Wrangler Text rule
+import BUILDLOG_HTML from "./assets/buildlog.html";
+// ADR-024: live system map (use case build tree) — canonical reference for every Claude session
+// @ts-expect-error — Wrangler Text rule
+import SYSTEM_MAP_HTML from "./assets/system-map.html";
+import {
+	handleUc3PipelineRun,
+	handleUc3PipelineCancel,
+	handleUc3PipelineStatus,
+	handleUc3ModuleRevise,
+	handleUc3ModuleBrief,
+	handleUc3BriefAudio,
+	handleUc3ModuleFeedback,
+	handleUc3ModuleApprove,
+	handleUc3ModuleTts,
+	handleUc3ModuleAudio,
+	handleUc3ModuleErrataCreate,
+	handleUc3ModuleErrataList,
+	handleUc3SpacedRepDue,
+	handleUc3SpacedRepMarkListened,
+	handleUc3ListGaps,
+} from "./handlers/uc3";
+import { handleS5Queue } from "./queue/s5-consumer";
+import { handleModuleTtsQueue } from "./queue/module-tts-consumer";
+import type { S5DraftMessage, ModuleTtsMessage } from "./lib/queues";
 
 export { Uc3FundamentalsPipeline } from "./workflows/uc3-pipeline";
 
@@ -18,11 +56,22 @@ declare global {
 		OPENAI_API_KEY: string;
 		ANTHROPIC_API_KEY: string;
 		ELEVENLABS_API_KEY: string;
+		ELEVENLABS_DEFAULT_VOICE_ID?: string;
 		TTS_CACHE: R2Bucket;
 		// §8.4a.21 W4 additions
 		UC3_DB: D1Database;
 		UC3_PIPELINE: Workflow;
 		BRAVE_SEARCH_API_KEY: string;
+		// §8.4a.21 W5 additions
+		S5_DRAFT_QUEUE: Queue<S5DraftMessage>;
+		// §8.4a.21 W8 additions
+		// Optional secret — when set, /api/uc3/module-errata-create mirrors to Notion.
+		// When unset, errata writes succeed in D1 and skip Notion silently.
+		MODULE_ERRATA_DB_ID?: string;
+		// §8.4a.21 W8.1 additions — Module TTS queue (replaces ctx.waitUntil for
+		// the slow generateModuleAudio path; each message gets its own fresh
+		// Worker invocation with full subrequest + wall-time budget).
+		MODULE_TTS_QUEUE: Queue<ModuleTtsMessage>;
 	}
 }
 
@@ -1928,8 +1977,104 @@ function mcpResponse(result: any) {
 	};
 }
 
+// §8.4a.21 W8 — search_modules MCP handler. Queries the UC3 Fundamentals
+// Learning Modules library by free-text + status + gap_id filters. Returns
+// each module with its public audio URL (full + brief), claim counts, and
+// latest verification verdict.
+interface SearchModulesInput {
+	query?: string;
+	status?: "approved" | "review-brief-pending" | "revision-requested" | "all";
+	gap_id?: string;
+	limit?: number;
+}
+
+async function handleSearchModules(input: SearchModulesInput, env: Env) {
+	const limit = Math.max(1, Math.min(input.limit ?? 10, 50));
+	const clauses: string[] = [];
+	const binds: Array<string | number> = [];
+	if (input.query && input.query.trim()) {
+		clauses.push("lm.learning_objective LIKE ?");
+		binds.push(`%${input.query.trim()}%`);
+	}
+	if (input.status && input.status !== "all") {
+		clauses.push("lm.status = ?");
+		binds.push(input.status);
+	}
+	if (input.gap_id && input.gap_id.trim()) {
+		clauses.push("lm.gap_id = ?");
+		binds.push(input.gap_id.trim());
+	}
+	const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+
+	try {
+		const modules = await env.UC3_DB
+			.prepare(
+				`SELECT lm.id, lm.gap_id, lm.position_in_series, lm.status, lm.learning_objective,
+				        lm.audio_r2_key, lm.transcript_r2_key
+				 FROM learning_modules lm
+				 ${where}
+				 ORDER BY lm.gap_id, lm.position_in_series ASC
+				 LIMIT ?`,
+			)
+			.bind(...binds, limit)
+			.all<{
+				id: number;
+				gap_id: string;
+				position_in_series: number;
+				status: string;
+				learning_objective: string;
+				audio_r2_key: string | null;
+				transcript_r2_key: string | null;
+			}>();
+
+		const results = await Promise.all(
+			(modules.results ?? []).map(async (m) => {
+				const claimsR = await env.UC3_DB
+					.prepare(
+						"SELECT COUNT(*) AS total, SUM(CASE WHEN needs_human_review=1 THEN 1 ELSE 0 END) AS flagged FROM section_claims WHERE module_id = ?",
+					)
+					.bind(m.id)
+					.first<{ total: number; flagged: number }>();
+				const erratR = await env.UC3_DB
+					.prepare("SELECT COUNT(*) AS n FROM module_errata WHERE module_id = ?")
+					.bind(m.id)
+					.first<{ n: number }>();
+				const s7R = await env.UC3_DB
+					.prepare(
+						"SELECT verdict FROM verification_passes WHERE module_id = ? AND pass_number = 2 ORDER BY decided_at DESC LIMIT 1",
+					)
+					.bind(m.id)
+					.first<{ verdict: string }>();
+				const briefR = await env.UC3_DB
+					.prepare("SELECT audio_r2_key FROM review_briefs WHERE module_id = ?")
+					.bind(m.id)
+					.first<{ audio_r2_key: string | null }>();
+				const base = "https://spacesc-mcp.75xnd2784n.workers.dev";
+				return {
+					module_id: m.id,
+					gap_id: m.gap_id,
+					position: m.position_in_series,
+					status: m.status,
+					learning_objective: m.learning_objective,
+					audio_url: m.audio_r2_key ? `${base}/api/uc3/module-audio?module_id=${m.id}` : null,
+					brief_audio_url: briefR?.audio_r2_key ? `${base}/api/uc3/brief-audio?module_id=${m.id}` : null,
+					has_transcript: !!m.transcript_r2_key,
+					claim_count: claimsR?.total ?? 0,
+					flagged_claim_count: claimsR?.flagged ?? 0,
+					errata_count: erratR?.n ?? 0,
+					latest_s7_verdict: s7R?.verdict ?? null,
+				};
+			}),
+		);
+
+		return { ok: true, query: input.query ?? null, status: input.status ?? null, gap_id: input.gap_id ?? null, count: results.length, modules: results };
+	} catch (err) {
+		return { ok: false, error: `search_modules failed: ${(err as Error).message}` };
+	}
+}
+
 export class SpaceSCMCP extends McpAgent<Env> {
-	server = new McpServer({ name: "spacesc", version: "1.1.0" });
+	server = new McpServer({ name: "spacesc", version: "1.2.0" });
 
 	async init() {
 		this.server.registerTool(
@@ -1990,6 +2135,22 @@ export class SpaceSCMCP extends McpAgent<Env> {
 				},
 			},
 			async (input) => mcpResponse(await handleApproveInsight(input, this.env)),
+		);
+
+		// §8.4a.21 W8 — search_modules: query the UC3 Fundamentals library.
+		this.server.registerTool(
+			"search_modules",
+			{
+				description:
+					"Search Campbell's UC3 Fundamentals Learning Modules library. Each module is a ~10-min audio lesson generated by the §8.4a.21 pipeline from a captured knowledge gap. Returns module metadata + public audio URLs (full-module + ~5-min review brief) + claim/errata counts + latest S7 verdict. Filter by free-text against learning_objective, status (approved/review-brief-pending/revision-requested/all), and/or gap_id. Cite module_id when referencing.",
+				inputSchema: {
+					query: z.string().min(1).optional(),
+					status: z.enum(["approved", "review-brief-pending", "revision-requested", "all"]).optional(),
+					gap_id: z.string().optional(),
+					limit: z.number().int().min(1).max(50).optional().default(10),
+				},
+			},
+			async (input) => mcpResponse(await handleSearchModules(input, this.env)),
 		);
 	}
 }
@@ -2166,14 +2327,106 @@ export default {
 			return new Response(null, { status: 204, headers: CORS_HEADERS });
 		}
 
-		// UC3 Commute Player standalone (v2.3) — phone-bookmarkable
+		// v5.2: nav pill injected into every surface so user can always jump.
+		// Self-bootstrapping vanilla JS. Self-detects current path. Same classes
+		// as the React NavMenu in /uc3 so styling is consistent.
+		const NAV_INJECTION = `
+<style>
+.sn-pill{position:fixed;top:max(10px,env(safe-area-inset-top));right:max(10px,env(safe-area-inset-right));z-index:99999;display:inline-flex;align-items:center;gap:8px;padding:7px 12px 7px 10px;background:#fff;border:0.5px solid #e7e5dc;border-radius:999px;box-shadow:0 1px 3px rgba(0,0,0,0.06);font:600 12px/1 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#1f1d18;cursor:pointer}
+.sn-pill-dot{width:6px;height:6px;border-radius:50%;background:#1f1d18}
+.sn-pill-chev{font-size:10px;color:#888780;transition:transform .2s}
+.sn-pill.sn-open .sn-pill-chev{transform:rotate(180deg)}
+.sn-bd{position:fixed;inset:0;background:rgba(31,29,24,0.18);z-index:99998}
+.sn-menu{position:fixed;top:max(54px,calc(env(safe-area-inset-top) + 44px));right:max(10px,env(safe-area-inset-right));z-index:99999;width:min(280px,calc(100vw - 20px));background:#fff;border:0.5px solid #e7e5dc;border-radius:14px;box-shadow:0 10px 30px rgba(31,29,24,0.18);overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
+.sn-mh{padding:10px 14px 8px;border-bottom:0.5px solid #e7e5dc;font:700 10px/1 ui-monospace,monospace;color:#888780;text-transform:uppercase;letter-spacing:0.06em}
+.sn-mi{display:flex;align-items:center;gap:10px;padding:12px 14px;text-decoration:none;color:#1f1d18;border-bottom:0.5px solid #e7e5dc}
+.sn-mi:last-child{border-bottom:none}
+.sn-mi.sn-active{background:#1f1d18;color:#faf9f5}
+.sn-mi.sn-active .sn-md{color:rgba(250,249,245,0.7)}
+.sn-mic{font-size:18px;width:26px;text-align:center}
+.sn-mt{flex:1}
+.sn-mn{font-size:14px;font-weight:600;line-height:1.3}
+.sn-md{font-size:11px;color:#888780;margin-top:1px}
+.sn-arrow{color:#888780;font-size:12px}
+@media print{.sn-pill,.sn-menu,.sn-bd{display:none!important}}
+</style>
+<script>
+(function(){
+  if(window.__spaceNavInjected)return;window.__spaceNavInjected=true;
+  var T=[
+    {id:'commute',n:'Commute',d:'Audio · listen + learn',i:'🎧',h:'/uc3'},
+    {id:'desk',n:'Desk',d:'Today · inbox · captures',i:'🗂',h:'/desk'},
+    {id:'reading',n:'Reading',d:'Deep read + annotation',i:'📖',h:'/reading'},
+    {id:'corpus',n:'Corpus',d:'Search the knowledge base',i:'🔍',h:'/corpus'},
+    {id:'insights',n:'Insights',d:'Approve or reject claims',i:'💎',h:'/insights'},
+    {id:'posture',n:'Posture',d:'Three-domain balance',i:'📊',h:'/posture'},
+    {id:'pipeline',n:'Pipeline',d:'Ingestion health',i:'🩺',h:'/pipeline'},
+    {id:'log',n:'Build Log',d:'What shipped, what next',i:'📒',h:'/log'},
+    {id:'map',n:'System map',d:'Five use cases · build tree',i:'🗺',h:'/system-map'}
+  ];
+  var p=location.pathname.replace(/\\/$/,'');
+  var cur=T.find(function(t){return t.h===p;});
+  function build(){
+    var root=document.createElement('div');
+    var pill=document.createElement('button');
+    pill.className='sn-pill';
+    pill.innerHTML='<span class="sn-pill-dot"></span><span>'+(cur?cur.n:'SpaceSC')+'</span><span class="sn-pill-chev">▼</span>';
+    root.appendChild(pill);
+    var bd=document.createElement('div');bd.className='sn-bd';bd.style.display='none';root.appendChild(bd);
+    var menu=document.createElement('div');menu.className='sn-menu';menu.style.display='none';
+    var hh='<div class="sn-mh">Jump to</div>';
+    T.forEach(function(t){
+      var active=cur && cur.id===t.id;
+      hh+='<a class="sn-mi'+(active?' sn-active':'')+'" href="'+t.h+'"><span class="sn-mic">'+t.i+'</span><span class="sn-mt"><div class="sn-mn">'+t.n+'</div><div class="sn-md">'+t.d+'</div></span>'+(active?'':'<span class="sn-arrow">→</span>')+'</a>';
+    });
+    menu.innerHTML=hh;
+    root.appendChild(menu);
+    var open=false;
+    function setOpen(v){open=v;pill.classList.toggle('sn-open',v);bd.style.display=v?'block':'none';menu.style.display=v?'block':'none';}
+    pill.onclick=function(e){e.stopPropagation();setOpen(!open);};
+    bd.onclick=function(){setOpen(false);};
+    document.addEventListener('keydown',function(e){if(e.key==='Escape'&&open)setOpen(false);});
+    document.body.appendChild(root);
+  }
+  if(document.body)build();else document.addEventListener('DOMContentLoaded',build);
+})();
+</script>
+`;
+		function injectNav(html: string): string {
+			// Inject before </body>; fall back to append if no </body> (rare)
+			const idx = html.lastIndexOf("</body>");
+			if (idx < 0) return html + NAV_INJECTION;
+			return html.slice(0, idx) + NAV_INJECTION + html.slice(idx);
+		}
+
+		// UC3 Commute Player (v5.2 hand-coded) — has its own React NavMenu, no injection
 		if (url.pathname === "/uc3" || url.pathname === "/uc3/") {
 			return new Response(COMMUTE_PLAYER_HTML, {
 				status: 200,
-				headers: {
-					"Content-Type": "text/html; charset=utf-8",
-					"Cache-Control": "public, max-age=300",
-				},
+				headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=60" },
+			});
+		}
+
+		// v5.2 + ADR-024: SpaceSC tool surfaces — each gets the nav pill injected.
+		// New /desk (hand-coded v2) lands at /desk; classic reading workspace at /reading.
+		// /desk is hand-coded with its own React NavMenu equivalent (so no inject) —
+		// but for now we use the same vanilla injection for consistency. The other
+		// hosted artifacts are bundled and need injection.
+		const surfaceMap: Record<string, string> = {
+			"/desk": DESK_HTML, "/desk/": DESK_HTML,
+			"/reading": READING_HTML, "/reading/": READING_HTML,
+			"/corpus": CORPUS_HTML, "/corpus/": CORPUS_HTML,
+			"/insights": INSIGHTS_HTML, "/insights/": INSIGHTS_HTML,
+			"/posture": POSTURE_HTML, "/posture/": POSTURE_HTML,
+			"/pipeline": PIPELINE_HTML, "/pipeline/": PIPELINE_HTML,
+			"/log": BUILDLOG_HTML, "/log/": BUILDLOG_HTML,
+			"/system-map": SYSTEM_MAP_HTML, "/system-map/": SYSTEM_MAP_HTML,
+		};
+		const surfaceHtml = surfaceMap[url.pathname];
+		if (surfaceHtml) {
+			return new Response(injectNav(surfaceHtml), {
+				status: 200,
+				headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=60" },
 			});
 		}
 
@@ -2184,6 +2437,19 @@ export default {
 			return new Response(JSON.stringify({ ok: false, error: "method not allowed" }), {
 				status: 405, headers: { "Content-Type": "application/json", ...CORS_HEADERS },
 			});
+		}
+
+		// §8.4a.21 W6 — brief audio is a PUBLIC stream (no bearer auth) so it
+		// can be opened directly in Safari/Files on phone. Mirrors how the
+		// Commute Player accesses /api/tts-cache/* without an Authorization
+		// header. Handled BEFORE the bearer-auth gate for /api/uc3/*.
+		if (url.pathname === "/api/uc3/brief-audio" && request.method === "GET") {
+			return await handleUc3BriefAudio(url, env);
+		}
+
+		// §8.4a.21 W8 — full-module audio is also a PUBLIC stream, mirroring brief-audio.
+		if (url.pathname === "/api/uc3/module-audio" && request.method === "GET") {
+			return await handleUc3ModuleAudio(url, env);
 		}
 
 		// §8.4a.21 W4 — UC3 pipeline routes (mixed methods, handled before POST-only /api router)
@@ -2207,6 +2473,60 @@ export default {
 				const result = (await handleUc3PipelineStatus(url, env)) as { ok: boolean; status?: number };
 				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
 			}
+			if (url.pathname === "/api/uc3/module-revise" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { module_id?: number };
+				const result = await handleUc3ModuleRevise(body, env);
+				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/uc3/module-brief" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { module_id?: number };
+				const result = await handleUc3ModuleBrief(body, env);
+				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/uc3/module-feedback" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { module_id?: number; voice_transcript?: string };
+				const result = await handleUc3ModuleFeedback(body, env, ctx);
+				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/uc3/module-approve" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { module_id?: number };
+				const result = await handleUc3ModuleApprove(body, env, ctx);
+				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
+			}
+			// §8.4a.21 W8 — additional UC3 routes
+			if (url.pathname === "/api/uc3/module-tts" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { module_id?: number };
+				const result = await handleUc3ModuleTts(body, env);
+				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/uc3/module-errata-create" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as {
+					module_id?: number; claim_id?: number | null; timestamp_seconds?: number | null; notes?: string;
+				};
+				if (typeof body.notes !== "string") {
+					return jsonResponse(400, { ok: false, error: "field 'notes' (string) required" });
+				}
+				const result = await handleUc3ModuleErrataCreate(body as any, env);
+				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/uc3/module-errata-list" && request.method === "GET") {
+				const result = await handleUc3ModuleErrataList(url, env);
+				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/uc3/spaced-rep-due" && request.method === "GET") {
+				const result = await handleUc3SpacedRepDue(url, env);
+				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/uc3/list-gaps" && request.method === "GET") {
+				const result = await handleUc3ListGaps(url, env);
+				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/uc3/spaced-rep-mark-listened" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { module_id?: number };
+				const result = await handleUc3SpacedRepMarkListened(body, env);
+				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
+			}
+			// brief-audio + module-audio handled above (public streams, no auth)
 			return jsonResponse(405, { ok: false, error: "method not allowed for this /api/uc3/* route" });
 		}
 
@@ -2223,8 +2543,19 @@ export default {
 		}
 
 		return new Response(
-			"SpaceSC MCP server. Endpoints: /mcp (Streamable HTTP), /sse (legacy), /api/{query,capture,search,approve,ingest-log,article,parking-lot-update,parking-lot-list,openai-classify,chat,rn-capture,gap-capture,log-append,oq-create,link-source,openai-parse-rn,tts,tts-chunked} (POST, bearer auth), /api/tts-cache/{page_id} (GET/PUT, bearer auth), /api/uc3/{pipeline-run (POST), pipeline-cancel (DELETE), pipeline-status (GET)} (bearer auth), /uc3 (UC3 Commute Player v2.3 standalone, public).",
+			"SpaceSC MCP server. Endpoints: /mcp (Streamable HTTP), /sse (legacy), /api/{query,capture,search,approve,ingest-log,article,parking-lot-update,parking-lot-list,openai-classify,chat,rn-capture,gap-capture,log-append,oq-create,link-source,openai-parse-rn,tts,tts-chunked} (POST, bearer auth), /api/tts-cache/{page_id} (GET/PUT, bearer auth), /api/uc3/{pipeline-run (POST), pipeline-cancel (DELETE), pipeline-status (GET), module-revise (POST), module-brief (POST), module-feedback (POST), module-tts (POST), module-errata-create (POST), module-errata-list (GET), spaced-rep-due (GET), spaced-rep-mark-listened (POST)} (bearer auth), /api/uc3/{brief-audio,module-audio} (GET, public), /uc3 (UC3 Commute Player v2.3 standalone, public). MCP tools: query_corpus, capture_insight, search_insights, approve_insight, search_modules. Queue consumer: uc3-s5-section-drafting.",
 			{ status: 200 },
 		);
+	},
+	async queue(batch: MessageBatch<S5DraftMessage | ModuleTtsMessage>, env: Env) {
+		// Route by queue name. Each queue has a distinct message shape;
+		// the consumer for each handles its own dispatch + ack/retry semantics.
+		if (batch.queue === "uc3-s5-section-drafting") {
+			await handleS5Queue(batch as MessageBatch<S5DraftMessage>, env);
+		} else if (batch.queue === "uc3-module-tts") {
+			await handleModuleTtsQueue(batch as MessageBatch<ModuleTtsMessage>, env);
+		} else {
+			console.error(`queue dispatcher: unknown queue ${batch.queue}`);
+		}
 	},
 };

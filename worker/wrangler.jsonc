@@ -54,5 +54,27 @@
 	],
 	"rules": [
 		{ "type": "Text", "globs": ["**/*.html", "**/*.txt"], "fallthrough": true }
-	]
+	],
+	"queues": {
+		"producers": [
+			{ "binding": "S5_DRAFT_QUEUE", "queue": "uc3-s5-section-drafting" },
+			{ "binding": "MODULE_TTS_QUEUE", "queue": "uc3-module-tts" }
+		],
+		"consumers": [
+			{
+				"queue": "uc3-s5-section-drafting",
+				"max_batch_size": 5,
+				"max_batch_timeout": 30,
+				"max_retries": 3,
+				"dead_letter_queue": "uc3-s5-section-drafting-dlq"
+			},
+			{
+				"queue": "uc3-module-tts",
+				"max_batch_size": 1,
+				"max_batch_timeout": 5,
+				"max_retries": 2,
+				"dead_letter_queue": "uc3-module-tts-dlq"
+			}
+		]
+	}
 }

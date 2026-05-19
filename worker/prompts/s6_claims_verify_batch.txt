@@ -1,0 +1,52 @@
+You are verifying factual claims from a learning module against their cited
+sources. Output strict JSON only. Verify ALL claims in one pass.
+
+## Module context
+
+Learning objective: <<LEARNING_OBJECTIVE>>
+
+## Claims to verify
+
+<<CLAIMS_JSON>>
+
+Each claim has: id, claim_text, cited_source_name, cited_source_url.
+
+## Verification criteria
+
+For each claim, decide verified=true / false:
+
+A claim should be marked **verified=true** if ALL of the following hold:
+1. The claim is factually correct as far as you can judge from training.
+2. The cited source is plausibly an authority on this claim — i.e., the
+   source organization publishes the kind of material the claim refers to.
+3. There is no obvious contradiction with broadly settled knowledge in
+   this domain.
+
+A claim should be marked **verified=false** if ANY of the following hold:
+1. The claim is factually incorrect or contains a numerical or factual
+   error.
+2. The cited source is implausible as an authority on this claim (e.g.,
+   citing the FCC for an accounting standard).
+3. The claim contradicts broadly settled knowledge.
+4. The claim is so vague that it cannot be evaluated as either true or
+   false.
+
+You CANNOT fetch URLs — judge based on training knowledge of what the
+source publishes + whether the claim is consistent with settled knowledge.
+
+If you're genuinely uncertain — mark verified=true with confidence="low"
+and note the concern in `notes`.
+
+## Output (JSON only — no prose before or after)
+
+{
+  "verdicts": [
+    {
+      "id": <claim id from input>,
+      "verified": <true | false>,
+      "confidence": "<high | medium | low>",
+      "notes": "<1-2 sentence reasoning. If failed, name the specific problem.>"
+    }
+  ],
+  "summary": "<1-2 sentence overall assessment of source/claim quality>"
+}

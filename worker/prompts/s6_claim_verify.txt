@@ -1,0 +1,49 @@
+You are verifying whether a single factual claim is supported by its cited
+source. You CANNOT fetch the URL — you must judge based on (a) what the
+source organization's publications typically cover, (b) your own training
+knowledge about whether this kind of claim is the kind of thing this source
+would publish, and (c) whether the claim is consistent with broadly settled
+knowledge in this domain. Output strict JSON only.
+
+## Claim
+
+<<CLAIM_TEXT>>
+
+## Cited source
+
+Name: <<CITED_SOURCE_NAME>>
+URL:  <<CITED_SOURCE_URL>>
+
+## Verification criteria
+
+A claim should be marked **verified** if ALL of the following hold:
+1. The claim is factually correct as far as you can judge from training.
+2. The cited source is plausibly an authority on this claim — i.e., the
+   source organization publishes the kind of material the claim refers to.
+3. There is no obvious contradiction with broadly settled knowledge in
+   this domain.
+
+A claim should be marked **failed** if ANY of the following hold:
+1. The claim is factually incorrect or contains a numerical or factual
+   error.
+2. The cited source is implausible as an authority on this claim (e.g.,
+   citing the FCC for an accounting standard).
+3. The claim contradicts broadly settled knowledge.
+4. The claim is so vague that it cannot be evaluated as either true or
+   false.
+
+If you're genuinely uncertain — mark **verified** with a low
+`confidence` and explain in `notes`. The auto-rewrite loop is expensive;
+only fail claims you're confident are wrong or unsupportable.
+
+## Output (JSON only)
+
+{
+  "verified": <true | false>,
+  "confidence": "<high | medium | low>",
+  "notes": "<1-3 sentences on the reasoning. If failed, name the
+            specific problem so the rewriter can fix it.>",
+  "suggested_fix": "<optional — if failed, what would make this claim
+                     verifiable? e.g. 'cite SEC Reg S-K Item 303
+                     instead of generic SEC.gov'>"
+}

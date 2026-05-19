@@ -1,9 +1,10 @@
-// §8.4a.21 W4 — UC3 Fundamentals pipeline (S0-S4).
+// §8.4a.21 W4 + W5 — UC3 Fundamentals pipeline (S0-S7).
 // Cloudflare Workflow that orchestrates topic decomposition → source discovery →
-// analog ranking → corpus retrieval → outline generation. Pauses at S4 for
-// Pause-for-Campbell #4 (dry-run inspection).
+// analog ranking → corpus retrieval → outline generation → section drafting via
+// Queue → per-module polish → per-claim verification (with auto-rewrite) →
+// holistic LLM-as-judge. Lands modules at status='review-brief-pending' for W6.
 //
-// S5-S12 land in W5-W8 (separate workstreams per dispatch).
+// S8-S12 land in W6-W8 (separate workstreams per dispatch).
 
 import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import {
@@ -22,7 +23,25 @@ import {
 	logVerification,
 	listCitationsByModule,
 	listAnalogsByModule,
+	insertSection,
+	listSectionsByModule,
+	countSectionsByStatusForGap,
+	setModuleTranscriptR2,
+	setModuleStatus,
+	setModuleVoiceId,
+	insertClaim,
+	setClaimVerification,
+	flagClaimForHumanReview,
+	listClaimsByModule,
+	moduleHasHumanReviewClaims,
+	insertVerificationPass,
+	type SectionType,
 } from "../lib/d1-uc3";
+import { pickVoiceForPosition } from "../lib/voice-rotation";
+import { putTranscript, getTranscript } from "../lib/r2-transcripts";
+import { reviseModule } from "../lib/revise-module";
+import { generateBriefScript, generateBriefAudio } from "../lib/review-brief";
+import type { S5DraftMessage } from "../lib/queues";
 
 // @ts-expect-error — Wrangler Text rule
 import S1_PROMPT from "../../prompts/s1_topic_decomposition.txt";
@@ -32,6 +51,14 @@ import S2_PROMPT from "../../prompts/s2_source_discovery.txt";
 import S4_PROMPT from "../../prompts/s4_outline_generation.txt";
 // @ts-expect-error — Wrangler Text rule
 import ANALOG_RANKING_PROMPT from "../../prompts/analog_ranking.txt";
+// @ts-expect-error — Wrangler Text rule
+import S5B_PROMPT from "../../prompts/s5b_module_polish.txt";
+// @ts-expect-error — Wrangler Text rule
+import S6_CLAIM_EXTRACT_PROMPT from "../../prompts/s6_claim_extract.txt";
+// @ts-expect-error — Wrangler Text rule
+import S6_CLAIMS_VERIFY_BATCH_PROMPT from "../../prompts/s6_claims_verify_batch.txt";
+// @ts-expect-error — Wrangler Text rule
+import S7_MODULE_JUDGE_PROMPT from "../../prompts/s7_module_judge.txt";
 import BEDROCK_SHELF_JSON from "../../prompts/bedrock_shelf.json";
 import ANALOG_SEED_JSON from "../../prompts/analog_seed_bibliography.json";
 
@@ -42,6 +69,14 @@ const MODEL_S1: AnthropicModel = "claude-sonnet-4-6";
 const MODEL_S2: AnthropicModel = "claude-haiku-4-5-20251001";
 const MODEL_S2_5: AnthropicModel = "claude-sonnet-4-6";
 const MODEL_S4: AnthropicModel = "claude-sonnet-4-6";
+const MODEL_S5B: AnthropicModel = "claude-sonnet-4-6";
+const MODEL_S6_EXTRACT: AnthropicModel = "claude-sonnet-4-6";
+// §8.4a.21 W5 post-dry-run-#11: swapped from Haiku to Sonnet after empirical
+// test on Module 5 — Haiku batched returned 0ok/23fail (100% false-negative),
+// Sonnet returned 16ok/7fail (70% verify rate + caught real defects). Cost
+// impact: ~3x per claim, ~$0.10 increase per gap.
+const MODEL_S6_VERIFY: AnthropicModel = "claude-sonnet-4-6";
+const MODEL_S7: AnthropicModel = "claude-sonnet-4-6";
 
 export interface Uc3Env {
 	UC3_DB: D1Database;
@@ -50,6 +85,11 @@ export interface Uc3Env {
 	NOTION_TOKEN: string;
 	WEBHOOK_SECRET: string;
 	N8N_BASE_URL: string;
+	S5_DRAFT_QUEUE: Queue<S5DraftMessage>;
+	TTS_CACHE: R2Bucket;
+	// §8.4a.21 W6 additions
+	ELEVENLABS_API_KEY: string;
+	ELEVENLABS_DEFAULT_VOICE_ID?: string;
 }
 
 export interface Uc3PipelineParams {
@@ -303,6 +343,7 @@ export class Uc3FundamentalsPipeline extends WorkflowEntrypoint<Uc3Env, Uc3Pipel
 					workflow_instance_id: instanceId,
 					stage: "S0",
 					status: "running",
+					gap_title: row.gap_title, // §8.4a.21 W9 UX-fix: persist for list-gaps
 				});
 				await patchGapStatus(env, gap_id, {
 					status: "Researching",
@@ -374,12 +415,16 @@ export class Uc3FundamentalsPipeline extends WorkflowEntrypoint<Uc3Env, Uc3Pipel
 					ok: true,
 				});
 				for (const m of parsed.modules) {
-					await insertLearningModule(env.UC3_DB, {
+					const id = await insertLearningModule(env.UC3_DB, {
 						gap_id,
 						position_in_series: m.position,
 						learning_objective: m.objective,
 						dependencies_json: JSON.stringify(m.depends_on || []),
 					});
+					// §8.4a.23 — assign rotation voice once, persist on the module.
+					// Same voice for brief + full audio later. Survives regenerations.
+					const v = pickVoiceForPosition(m.position);
+					await setModuleVoiceId(env.UC3_DB, id, v.voice_id);
 				}
 				await upsertPipelineState(env.UC3_DB, { gap_id, stage: "S1", status: "running" });
 				await patchGapStatus(env, gap_id, { last_stage: "S1" });
@@ -400,45 +445,94 @@ export class Uc3FundamentalsPipeline extends WorkflowEntrypoint<Uc3Env, Uc3Pipel
 			},
 		);
 
-		// ── S2 first (gates S2.5 on its uses_analog signal) + S3 parallel ───
-		// Per module: S2 → then S2.5 (only if S2.uses_analog) + S3 in parallel.
-		// Top-level: all modules run in parallel.
+		// ── Listened-doc-ids (one Notion call, used by S3 + S4 per module) ───
+		// Done OUTSIDE the per-module steps so we don't fan-out a wasted Notion
+		// query per module; each step.do then gets the list as a deterministic
+		// input. The step.do itself caches the result for retries.
+		const listenedIds: string[] = await step.do(
+			"fetch-listened-page-ids",
+			{ retries: { limit: 2, delay: "2 seconds" }, timeout: "30 seconds" },
+			async () => await listListenedPageIds(env),
+		);
+
+		// ── S2 fan-out: one step.do per module, each in its own Worker invocation ─
+		// Fresh subrequest budget per module — fixes the "Too many subrequests by
+		// single Worker invocation" error when Promise.all batched all per-module
+		// work into one step. step.do parallelism via Promise.all of step.do calls.
+		// Returns {uses_analog} per module for S2.5 gating.
+		const s2Results: Array<{ position: number; uses_analog: boolean }> = await Promise.all(
+			modules.map((m) =>
+				step.do(
+					`S2-module-${m.id}`,
+					{ retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "3 minutes" },
+					async () => {
+						const out = await runS2(env, gap.domain, m);
+						return { position: m.position_in_series, uses_analog: out.uses_analog };
+					},
+				),
+			),
+		);
+
+		// ── S3 fan-out (parallel with S2.5; independent inputs) ──────────────
+		await Promise.all(
+			modules.map((m) =>
+				step.do(
+					`S3-module-${m.id}`,
+					{ retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "2 minutes" },
+					async () => {
+						await runS3(env, m, listenedIds);
+						return { position: m.position_in_series };
+					},
+				),
+			),
+		);
+
+		// ── S2.5 fan-out: only modules where S2 judged uses_analog=true ──────
+		const analogModules = modules.filter((_m, i) => s2Results[i]?.uses_analog === true);
+		if (analogModules.length > 0) {
+			await Promise.all(
+				analogModules.map((m) =>
+					step.do(
+						`S2.5-module-${m.id}`,
+						{ retries: { limit: 1, delay: "10 seconds" }, timeout: "5 minutes" },
+						async () => {
+							await runS2_5(env, m);
+							return { position: m.position_in_series };
+						},
+					),
+				),
+			);
+		}
+
+		// Mark progress before S4.
 		await step.do(
-			"S2-then-S2.5+S3-parallel",
-			{ retries: { limit: 1, delay: "10 seconds" }, timeout: "10 minutes" },
+			"mark-pre-S4",
+			{ retries: { limit: 2, delay: "2 seconds" }, timeout: "20 seconds" },
 			async () => {
-				const listenedIds = await listListenedPageIds(env);
-				await Promise.all(
-					modules.map(async (m) => {
-						const s2 = await runS2(env, gap.domain, m);
-						await Promise.all([
-							s2.uses_analog ? runS2_5(env, m) : Promise.resolve(),
-							runS3(env, m, listenedIds),
-						]);
-					}),
-				);
 				await upsertPipelineState(env.UC3_DB, { gap_id, stage: "S2.5", status: "running" });
 				await patchGapStatus(env, gap_id, { last_stage: "S2.5" });
+				return { ok: true };
 			},
 		);
 
-		// ── S4: outline generation ───────────────────────────────────────────
-		await step.do(
-			"S4-outline",
-			{ retries: { limit: 1, delay: "5 seconds" }, timeout: "10 minutes" },
-			async () => {
-				await Promise.all(
-					modules.map(async (m) => {
+		// ── S4 fan-out: outline generation per module ────────────────────────
+		await Promise.all(
+			modules.map((m) =>
+				step.do(
+					`S4-module-${m.id}`,
+					{ retries: { limit: 1, delay: "10 seconds" }, timeout: "5 minutes" },
+					async () => {
 						const citations = await listCitationsByModule(env.UC3_DB, m.id);
 						const analogs = await listAnalogsByModule(env.UC3_DB, m.id);
 						const advanceAnalogs = analogs.filter((a) => a.advance_to_drafting === 1);
-						const corpus = await queryCorpus(env, m.learning_objective, await listListenedPageIds(env));
-						const depTexts = (JSON.parse(m.dependencies_json || "[]") as number[])
-							.map((depPos) => {
-								const dep = modules.find((mm) => mm.position_in_series === depPos);
-								return dep ? `- pos ${depPos}: ${dep.learning_objective}` : `- pos ${depPos}: (missing)`;
-							})
-							.join("\n") || "(no prerequisite modules)";
+						const corpus = await queryCorpus(env, m.learning_objective, listenedIds);
+						const depTexts =
+							(JSON.parse(m.dependencies_json || "[]") as number[])
+								.map((depPos) => {
+									const dep = modules.find((mm) => mm.position_in_series === depPos);
+									return dep ? `- pos ${depPos}: ${dep.learning_objective}` : `- pos ${depPos}: (missing)`;
+								})
+								.join("\n") || "(no prerequisite modules)";
 						const prompt = fillTemplate(S4_PROMPT as unknown as string, {
 							MODULE_POSITION: m.position_in_series,
 							TOTAL_MODULES: modules.length,
@@ -465,7 +559,7 @@ export class Uc3FundamentalsPipeline extends WorkflowEntrypoint<Uc3Env, Uc3Pipel
 								ok: false,
 								error_text: r.error,
 							});
-							return;
+							return { position: m.position_in_series, ok: false, error: r.error };
 						}
 						const parsed = extractJson(r.text);
 						if (!parsed) {
@@ -478,7 +572,7 @@ export class Uc3FundamentalsPipeline extends WorkflowEntrypoint<Uc3Env, Uc3Pipel
 								ok: false,
 								error_text: "S4 output did not parse",
 							});
-							return;
+							return { position: m.position_in_series, ok: false, error: "parse failed" };
 						}
 						await setModuleOutline(env.UC3_DB, m.id, JSON.stringify(parsed));
 						await logVerification(env.UC3_DB, {
@@ -489,10 +583,536 @@ export class Uc3FundamentalsPipeline extends WorkflowEntrypoint<Uc3Env, Uc3Pipel
 							response_json: JSON.stringify(parsed),
 							ok: true,
 						});
-					}),
-				);
-				await upsertPipelineState(env.UC3_DB, { gap_id, stage: "S4", status: "paused" });
+						return { position: m.position_in_series, ok: true };
+					},
+				),
+			),
+		);
+
+		// Mark S4 complete + auto-advance to S5 (no Campbell gate here per W5 plan).
+		await step.do(
+			"mark-S4-complete",
+			{ retries: { limit: 2, delay: "2 seconds" }, timeout: "20 seconds" },
+			async () => {
+				await upsertPipelineState(env.UC3_DB, { gap_id, stage: "S4", status: "running" });
 				await patchGapStatus(env, gap_id, { status: "Drafted", last_stage: "S4" });
+				return { ok: true };
+			},
+		);
+
+		// Refetch modules with outline_json now that S4 populated it.
+		const modulesWithOutlines = await step.do(
+			"S5-refetch-modules-with-outlines",
+			{ retries: { limit: 2, delay: "2 seconds" }, timeout: "15 seconds" },
+			async () => {
+				const r = await env.UC3_DB
+					.prepare(
+						"SELECT id, position_in_series, learning_objective, dependencies_json, outline_json FROM learning_modules WHERE gap_id = ? ORDER BY position_in_series ASC",
+					)
+					.bind(gap_id)
+					.all<{ id: number; position_in_series: number; learning_objective: string; dependencies_json: string; outline_json: string | null }>();
+				return r.results ?? [];
+			},
+		);
+
+		// ═════════════════════════════════════════════════════════════════════
+		// W5 — S5 section drafting (Queue fan-out + per-module polish)
+		// ═════════════════════════════════════════════════════════════════════
+
+		// S5a-prepare: fan-out per-module (each module gets its own Worker invocation
+		// with its own subrequest budget — ~14 section inserts + 1 sendBatch per
+		// module is well under the per-invocation cap).
+		await Promise.all(
+			modulesWithOutlines.map((m) =>
+				step.do(
+					`S5a-enqueue-module-${m.id}`,
+					{ retries: { limit: 2, delay: "5 seconds" }, timeout: "1 minute" },
+					async () => {
+						if (!m.outline_json) return { module_id: m.id, enqueued: 0 };
+						const outline = JSON.parse(m.outline_json) as {
+							hook?: unknown;
+							core_concept?: unknown;
+							sub_concepts?: unknown[];
+							integration?: unknown;
+							self_checks?: unknown[];
+						};
+						const messages: S5DraftMessage[] = [];
+						const enqueueOne = async (type: SectionType, position: number) => {
+							const section_id = await insertSection(env.UC3_DB, {
+								module_id: m.id,
+								position,
+								section_type: type,
+								status: "queued",
+							});
+							messages.push({ module_id: m.id, section_id, gap_id });
+						};
+						if (outline.hook) await enqueueOne("hook", 1);
+						if (outline.core_concept) await enqueueOne("core", 1);
+						if (Array.isArray(outline.sub_concepts)) {
+							for (let i = 0; i < outline.sub_concepts.length; i++) await enqueueOne("sub_concept", i + 1);
+						}
+						if (outline.integration) await enqueueOne("integration", 1);
+						if (Array.isArray(outline.self_checks)) {
+							for (let i = 0; i < outline.self_checks.length; i++) await enqueueOne("self_check", i + 1);
+						}
+						if (messages.length > 0) {
+							await env.S5_DRAFT_QUEUE.sendBatch(messages.map((body) => ({ body })));
+						}
+						return { module_id: m.id, enqueued: messages.length };
+					},
+				),
+			),
+		);
+
+		// (S5a-mark-enqueued removed — was hitting subrequest cumulative limit due
+		// to CF Workflow runtime bundling consecutive step.do calls into one
+		// Worker invocation.)
+
+		// S5a-wait: poll D1 until all sections for this gap are drafted (or fail
+		// after ~9 minutes — covers Worker queue retry headroom). Uses step.sleep
+		// between polls so each poll iteration gets its own Worker invocation with
+		// fresh subrequest budget (instead of accumulating 60+ D1 polls in one
+		// invocation).
+		let drafts = { total: 0, drafted: 0 };
+		for (let i = 0; i < 60; i++) {
+			drafts = await step.do(
+				`S5a-check-drafts-${i}`,
+				{ retries: { limit: 2, delay: "2 seconds" }, timeout: "20 seconds" },
+				async () => await countSectionsByStatusForGap(env.UC3_DB, gap_id),
+			);
+			if (drafts.total > 0 && drafts.drafted >= drafts.total) break;
+			await step.sleep(`S5a-wait-${i}`, "10 seconds");
+		}
+		if (!(drafts.total > 0 && drafts.drafted >= drafts.total)) {
+			throw new Error(`S5a wait exhausted — drafted ${drafts.drafted}/${drafts.total}`);
+		}
+
+		// Force isolate refresh before S5b polish phase (resets subrequest counter).
+		await step.sleep("pre-S5b-isolate-refresh", "5 seconds");
+
+		// S5b: per-module polish (Promise.all of step.do fan-out — fresh Worker
+		// invocation per module so subrequest budget stays per-module).
+		await Promise.all(
+			modulesWithOutlines.map((m) =>
+				step.do(
+					`S5b-polish-module-${m.id}`,
+					{ retries: { limit: 1, delay: "10 seconds" }, timeout: "5 minutes" },
+					async () => {
+						const sections = await listSectionsByModule(env.UC3_DB, m.id);
+						const draftedBeats = sections.map((s) => ({
+							section_type: s.section_type,
+							position: s.position,
+							draft_text: s.draft_text,
+							citations_used: s.citations_json ? JSON.parse(s.citations_json) : [],
+						}));
+						const outline = m.outline_json ? JSON.parse(m.outline_json) : {};
+						const prompt = fillTemplate(S5B_PROMPT as unknown as string, {
+							MODULE_POSITION: m.position_in_series,
+							TOTAL_MODULES: modulesWithOutlines.length,
+							LEARNING_OBJECTIVE: m.learning_objective,
+							AUDIO_RATIONALE: outline.audio_voice_notes ?? "",
+							DRAFTED_BEATS_JSON: JSON.stringify(draftedBeats),
+						});
+						const promptHash = await sha256Hex(prompt);
+						const r = await callAnthropic({
+							apiKey: env.ANTHROPIC_API_KEY,
+							model: MODEL_S5B,
+							user: prompt,
+							// 8192 = current Sonnet max. W6 dry-run #17 Mod 1 hit 6144 cap
+							// with 14 sections × ~400 words → ~6000-word polished output;
+							// JSON envelope pushed past cap and truncated mid-string.
+							maxTokens: 8192,
+						});
+						if (!r.ok || !r.text) {
+							await logVerification(env.UC3_DB, {
+								module_id: m.id,
+								stage: "S5b",
+								model: MODEL_S5B,
+								prompt_hash: promptHash,
+								ok: false,
+								error_text: r.error,
+							});
+							return { ok: false };
+						}
+						const parsed = extractJson<{
+							polished_transcript?: string;
+							citations?: unknown;
+							estimated_total_seconds?: number;
+							polish_notes?: string;
+						}>(r.text);
+						if (!parsed || !parsed.polished_transcript) {
+							await logVerification(env.UC3_DB, {
+								module_id: m.id,
+								stage: "S5b",
+								model: MODEL_S5B,
+								prompt_hash: promptHash,
+								response_json: r.text.slice(0, 4000),
+								ok: false,
+								error_text: "S5b output did not parse",
+							});
+							return { ok: false };
+						}
+						const r2Key = await putTranscript(env.TTS_CACHE, m.id, parsed.polished_transcript);
+						await setModuleTranscriptR2(env.UC3_DB, m.id, r2Key);
+						await logVerification(env.UC3_DB, {
+							module_id: m.id,
+							stage: "S5b",
+							model: MODEL_S5B,
+							prompt_hash: promptHash,
+							response_json: JSON.stringify({ ...parsed, polished_transcript: parsed.polished_transcript.slice(0, 600) + "…" }),
+							ok: true,
+						});
+						return { ok: true };
+					},
+				),
+			),
+		);
+
+		// Force isolate refresh before S6 phase.
+		await step.sleep("pre-S6-isolate-refresh", "5 seconds");
+
+		// ═════════════════════════════════════════════════════════════════════
+		// W5 — S6 per-claim verification (sequential per-module — see note below)
+		// ═════════════════════════════════════════════════════════════════════
+
+		// Sequential per-module (NOT Promise.all) — CF Workflows bundles Promise.all
+		// step.do calls into one Worker invocation, blowing the subrequest budget
+		// when each module's S6 makes ~30 subrequests (extract + per-claim verify +
+		// D1 writes). Sequential gives each module its own clean invocation.
+		// Latency cost: ~5 modules × ~30s = ~150s. Acceptable for v1.
+		for (const m of modules) {
+			await step.do(
+					`S6-verify-module-${m.id}`,
+					{ retries: { limit: 1, delay: "10 seconds" }, timeout: "10 minutes" },
+					async () => {
+						const transcript = await getTranscript(env.TTS_CACHE, m.id);
+						if (!transcript) {
+							await logVerification(env.UC3_DB, {
+								module_id: m.id,
+								stage: "S6",
+								ok: false,
+								error_text: "no transcript in R2",
+							});
+							return { ok: false };
+						}
+						const citations = await listCitationsByModule(env.UC3_DB, m.id);
+
+						// 1) Extract claims via Sonnet
+						const extractPrompt = fillTemplate(S6_CLAIM_EXTRACT_PROMPT as unknown as string, {
+							LEARNING_OBJECTIVE: m.learning_objective,
+							POLISHED_TRANSCRIPT: transcript,
+							CITATIONS_JSON: JSON.stringify(citations.map((c) => ({ name: c.source_name, url: c.source_url }))),
+						});
+						const extractHash = await sha256Hex(extractPrompt);
+						const extractR = await callAnthropic({
+							apiKey: env.ANTHROPIC_API_KEY,
+							model: MODEL_S6_EXTRACT,
+							user: extractPrompt,
+							maxTokens: 3072,
+						});
+						if (!extractR.ok || !extractR.text) {
+							await logVerification(env.UC3_DB, {
+								module_id: m.id,
+								stage: "S6-extract",
+								model: MODEL_S6_EXTRACT,
+								prompt_hash: extractHash,
+								ok: false,
+								error_text: extractR.error,
+							});
+							return { ok: false };
+						}
+						const extractParsed = extractJson<{
+							claims?: Array<{ claim_text: string; cited_source_name?: string | null; cited_source_url?: string | null }>;
+						}>(extractR.text);
+						const claims = extractParsed?.claims ?? [];
+						await logVerification(env.UC3_DB, {
+							module_id: m.id,
+							stage: "S6-extract",
+							model: MODEL_S6_EXTRACT,
+							prompt_hash: extractHash,
+							response_json: JSON.stringify({ claim_count: claims.length }),
+							ok: true,
+						});
+
+						// 2) Insert claims (assigned to first section per module for v1 — claim-to-section
+						//    granular mapping is a polish item; the verification trail still works).
+						const firstSection = (await listSectionsByModule(env.UC3_DB, m.id))[0];
+						const sectionIdFallback = firstSection?.id ?? 0;
+						const claimIds: Array<{ id: number; claim_text: string; source_name: string | null; source_url: string | null }> = [];
+						for (const c of claims) {
+							const id = await insertClaim(env.UC3_DB, {
+								section_id: sectionIdFallback,
+								module_id: m.id,
+								claim_text: c.claim_text,
+								cited_source_name: c.cited_source_name ?? null,
+								cited_source_url: c.cited_source_url ?? null,
+							});
+							claimIds.push({
+								id,
+								claim_text: c.claim_text,
+								source_name: c.cited_source_name ?? null,
+								source_url: c.cited_source_url ?? null,
+							});
+						}
+
+						// 3) Verify ALL claims in ONE batched Haiku call.
+						// (W5 design pivot 2026-05-17: per-claim verification + auto-rewrite
+						// loop hit CF Worker subrequest limits — ~200 subrequests/module
+						// blew the cumulative budget. Batched call cuts that to ~5/module.
+						// Auto-rewrite removed; failed claims go straight to needs_human_review.)
+						let verified = 0;
+						let failed = 0;
+						const claimsForPrompt = claimIds.map((c) => ({
+							id: c.id,
+							claim_text: c.claim_text,
+							cited_source_name: c.source_name,
+							cited_source_url: c.source_url,
+						}));
+						if (claimsForPrompt.length > 0) {
+							const verifyPrompt = fillTemplate(S6_CLAIMS_VERIFY_BATCH_PROMPT as unknown as string, {
+								LEARNING_OBJECTIVE: m.learning_objective,
+								CLAIMS_JSON: JSON.stringify(claimsForPrompt),
+							});
+							const r = await callAnthropic({
+								apiKey: env.ANTHROPIC_API_KEY,
+								model: MODEL_S6_VERIFY,
+								user: verifyPrompt,
+								maxTokens: 4096,
+							});
+							if (!r.ok || !r.text) {
+								// Mark all claims as unverified + flag for review.
+								for (const c of claimIds) {
+									await setClaimVerification(env.UC3_DB, c.id, false, `batch verify failed: ${r.error}`);
+									await flagClaimForHumanReview(env.UC3_DB, c.id);
+									failed += 1;
+								}
+							} else {
+								const parsed = extractJson<{
+									verdicts?: Array<{ id: number; verified?: boolean; notes?: string }>;
+								}>(r.text);
+								const verdictById = new Map<number, { verified: boolean; notes: string | null }>();
+								for (const v of parsed?.verdicts ?? []) {
+									verdictById.set(v.id, { verified: v.verified === true, notes: v.notes ?? null });
+								}
+								for (const c of claimIds) {
+									const v = verdictById.get(c.id) ?? { verified: false, notes: "no verdict returned" };
+									await setClaimVerification(env.UC3_DB, c.id, v.verified, v.notes);
+									if (v.verified) {
+										verified += 1;
+									} else {
+										await flagClaimForHumanReview(env.UC3_DB, c.id);
+										failed += 1;
+									}
+								}
+							}
+						}
+
+						await insertVerificationPass(env.UC3_DB, {
+							module_id: m.id,
+							pass_number: 1,
+							pass_type: "per_claim",
+							model: MODEL_S6_VERIFY,
+							verdict: failed === 0 ? "approved" : "revise",
+							rationale: `verified ${verified}/${claimIds.length} claims; ${failed} failed and flagged for human review`,
+						});
+						return { ok: true, verified, failed, total: claimIds.length };
+					},
+				);
+		}
+
+		// (mark-S6-complete removed — see note above.)
+
+		// Force isolate refresh before S7 phase.
+		await step.sleep("pre-S7-isolate-refresh", "5 seconds");
+
+		// ═════════════════════════════════════════════════════════════════════
+		// W5 — S7 holistic LLM-as-judge (sequential per-module, same isolation
+		// reason as S6 — each module's S7 makes ~1 Anthropic call + few D1 ops,
+		// but bundling all 5 into one invocation hit the limit.)
+		// ═════════════════════════════════════════════════════════════════════
+
+		for (const m of modules) {
+			await step.do(
+					`S7-judge-module-${m.id}`,
+					{ retries: { limit: 1, delay: "10 seconds" }, timeout: "3 minutes" },
+					async () => {
+						const transcript = await getTranscript(env.TTS_CACHE, m.id);
+						if (!transcript) {
+							await logVerification(env.UC3_DB, {
+								module_id: m.id,
+								stage: "S7",
+								ok: false,
+								error_text: "no transcript in R2",
+							});
+							return { ok: false };
+						}
+						const citations = await listCitationsByModule(env.UC3_DB, m.id);
+						const claims = await listClaimsByModule(env.UC3_DB, m.id);
+						const s6Trail = claims.map((c) => ({
+							claim: c.claim_text,
+							source: c.cited_source_name,
+							verified: c.verified_pass1 === 1,
+							needs_human_review: c.needs_human_review === 1,
+							notes: c.verification_notes,
+						}));
+						const prompt = fillTemplate(S7_MODULE_JUDGE_PROMPT as unknown as string, {
+							MODULE_POSITION: m.position_in_series,
+							TOTAL_MODULES: modules.length,
+							LEARNING_OBJECTIVE: m.learning_objective,
+							POLISHED_TRANSCRIPT: transcript,
+							CITATIONS_JSON: JSON.stringify(citations.map((c) => ({ name: c.source_name, url: c.source_url }))),
+							S6_TRAIL_JSON: JSON.stringify(s6Trail),
+						});
+						const promptHash = await sha256Hex(prompt);
+						const r = await callAnthropic({
+							apiKey: env.ANTHROPIC_API_KEY,
+							model: MODEL_S7,
+							user: prompt,
+							maxTokens: 2048,
+						});
+						if (!r.ok || !r.text) {
+							await logVerification(env.UC3_DB, {
+								module_id: m.id,
+								stage: "S7",
+								model: MODEL_S7,
+								prompt_hash: promptHash,
+								ok: false,
+								error_text: r.error,
+							});
+							await insertVerificationPass(env.UC3_DB, {
+								module_id: m.id,
+								pass_number: 2,
+								pass_type: "pedagogy",
+								model: MODEL_S7,
+								verdict: "revise",
+								rationale: `S7 call failed: ${r.error}`,
+							});
+							return { ok: false };
+						}
+						const parsed = extractJson<{
+							verdict?: string;
+							cross_source_consistency?: { ok: boolean; concerns?: string[] };
+							internal_consistency?: { ok: boolean; concerns?: string[] };
+							pedagogical_soundness?: { ok: boolean; teaches_objective?: boolean; concerns?: string[] };
+							rationale?: string;
+						}>(r.text);
+						const verdict = (parsed?.verdict === "approved" || parsed?.verdict === "reject") ? parsed.verdict : "revise";
+						await insertVerificationPass(env.UC3_DB, {
+							module_id: m.id,
+							pass_number: 2,
+							pass_type: "pedagogy",
+							model: MODEL_S7,
+							verdict,
+							rationale: parsed?.rationale ?? null,
+						});
+						await logVerification(env.UC3_DB, {
+							module_id: m.id,
+							stage: "S7",
+							model: MODEL_S7,
+							prompt_hash: promptHash,
+							response_json: JSON.stringify(parsed),
+							ok: true,
+						});
+						return { ok: true, verdict };
+					},
+				);
+		}
+
+		// ═════════════════════════════════════════════════════════════════════
+		// W5+ — Revision loop (1 pass): for any module S7 flagged revise,
+		// fire one revise step per module (each step.do = fresh Worker
+		// invocation = own subrequest budget).
+		// ═════════════════════════════════════════════════════════════════════
+
+		// Identify modules needing revision (latest S7 verdict = revise).
+		const modulesToRevise: number[] = [];
+		for (const m of modules) {
+			const passes = await env.UC3_DB
+				.prepare("SELECT verdict FROM verification_passes WHERE module_id = ? AND pass_number = 2 ORDER BY decided_at DESC LIMIT 1")
+				.bind(m.id)
+				.first<{ verdict: string }>();
+			if (passes?.verdict === "revise") modulesToRevise.push(m.id);
+		}
+
+		if (modulesToRevise.length > 0) {
+			await step.sleep("pre-revise-isolate-refresh", "5 seconds");
+			// Up to 2 revision passes per module — break early on approved.
+			const REVISION_PASS_CAP = 2;
+			for (const mid of modulesToRevise) {
+				for (let pass = 1; pass <= REVISION_PASS_CAP; pass++) {
+					await step.do(
+						`revise-module-${mid}-pass${pass}`,
+						{ retries: { limit: 1, delay: "10 seconds" }, timeout: "8 minutes" },
+						async () => await reviseModule(env, mid),
+					);
+					const latest = await step.do(
+						`revise-check-${mid}-pass${pass}`,
+						{ retries: { limit: 2, delay: "2 seconds" }, timeout: "20 seconds" },
+						async () =>
+							await env.UC3_DB
+								.prepare(
+									"SELECT verdict FROM verification_passes WHERE module_id = ? AND pass_number = 2 ORDER BY decided_at DESC LIMIT 1",
+								)
+								.bind(mid)
+								.first<{ verdict: string }>(),
+					);
+					if (latest?.verdict === "approved") break;
+				}
+			}
+		}
+
+		// ═════════════════════════════════════════════════════════════════════
+		// W6 — S8 review brief assembly (script via Sonnet + audio via ElevenLabs)
+		// Sequential per-module — script + TTS each fresh Worker invocation
+		// (fresh subrequest budget). Generated for ALL modules regardless of
+		// S7 verdict so W7 voice feedback can react to imperfect modules.
+		// ═════════════════════════════════════════════════════════════════════
+
+		await step.sleep("pre-S8-isolate-refresh", "5 seconds");
+
+		for (const m of modules) {
+			await step.do(
+				`S8-brief-script-${m.id}`,
+				{ retries: { limit: 1, delay: "10 seconds" }, timeout: "5 minutes" },
+				async () => await generateBriefScript(env, m.id),
+			);
+			await step.do(
+				`S8-brief-tts-${m.id}`,
+				{ retries: { limit: 1, delay: "10 seconds" }, timeout: "5 minutes" },
+				async () => await generateBriefAudio(env, m.id),
+			);
+		}
+
+		// Final state — set module + pipeline status based on aggregate.
+		// (Reads post-revision verification_passes since revise updates them.)
+		await step.do(
+			"mark-S7-complete",
+			{ retries: { limit: 2, delay: "2 seconds" }, timeout: "1 minute" },
+			async () => {
+				let anyRevision = false;
+				for (const m of modules) {
+					const needsReview = await moduleHasHumanReviewClaims(env.UC3_DB, m.id);
+					const latestS7 = await env.UC3_DB
+						.prepare("SELECT verdict FROM verification_passes WHERE module_id = ? AND pass_number = 2 ORDER BY decided_at DESC LIMIT 1")
+						.bind(m.id)
+						.first<{ verdict: string }>();
+					if (needsReview || latestS7?.verdict !== "approved") {
+						await setModuleStatus(env.UC3_DB, m.id, "revision-requested");
+						anyRevision = true;
+					} else {
+						await setModuleStatus(env.UC3_DB, m.id, "review-brief-pending");
+					}
+				}
+				await upsertPipelineState(env.UC3_DB, {
+					gap_id,
+					stage: "S8",
+					status: anyRevision ? "paused" : "completed",
+				});
+				await patchGapStatus(env, gap_id, {
+					status: anyRevision ? "Revision-Requested" : "Review-Brief-Pending",
+					last_stage: "S8",
+				});
+				return { ok: true, anyRevision };
 			},
 		);
 	}
