@@ -91,6 +91,7 @@ input, textarea { font: inherit; color: inherit; }
 .badge-ok    { color: var(--green);  border-color: var(--green);  background: rgba(59,109,17,.07); }
 .badge-warn  { color: var(--accent-warm); border-color: var(--accent-warm); background: rgba(133,79,11,.07); }
 .badge-busy  { color: var(--purple); border-color: var(--purple); background: rgba(83,74,183,.07); }
+.badge-bad   { color: var(--red);    border-color: var(--red);    background: rgba(163,45,45,.07); }
 .badge-due   { color: var(--red);    border-color: var(--red);    background: rgba(163,45,45,.07); }
 .badge-muted { color: var(--ink-mute); border-color: var(--line-strong); background: var(--bg-sunken); }
 
@@ -432,17 +433,27 @@ const API = {
     } catch (_) { return { json: null, text: "" }; }
   },
 
-  async _get(path) {
+  async _get(path, opts) {
     const t = API.getToken();
     if (!t) throw Object.assign(new Error("no token"), { code: "NO_TOKEN" });
-    const r = await fetch(BASE + path, { headers: { Authorization: "Bearer " + t } });
-    if (r.status === 401 || r.status === 403) throw Object.assign(new Error("unauthorized"), { code: "AUTH" });
-    if (!r.ok) {
-      const b = await API._readBody(r);
-      const msg = "HTTP " + r.status + (b.text ? ": " + b.text.slice(0, 200) : "");
-      throw Object.assign(new Error(msg), { code: "HTTP_" + r.status, body: b.text, jsonBody: b.json });
+    const timeout = (opts && opts.timeout) || 30000;
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const r = await fetch(BASE + path, { headers: { Authorization: "Bearer " + t }, signal: ctrl.signal });
+      clearTimeout(tid);
+      if (r.status === 401 || r.status === 403) throw Object.assign(new Error("unauthorized"), { code: "AUTH" });
+      if (!r.ok) {
+        const b = await API._readBody(r);
+        const msg = "HTTP " + r.status + (b.text ? ": " + b.text.slice(0, 200) : "");
+        throw Object.assign(new Error(msg), { code: "HTTP_" + r.status, body: b.text, jsonBody: b.json });
+      }
+      return r.json();
+    } catch (e) {
+      clearTimeout(tid);
+      if (e.name === "AbortError") throw Object.assign(new Error("timeout"), { code: "TIMEOUT" });
+      throw e;
     }
-    return r.json();
   },
 
   async _post(path, body, opts) {
@@ -659,8 +670,10 @@ function LoginPage({ onSaved, initialError }) {
         API.clearToken();
         setErr("Token rejected. Paste the right one.");
       } else {
-        // Network issue or other — accept the token, let main app handle it
-        onSaved();
+        // Network or server issue — accept the token but warn the user so
+        // they don't think the empty main app is silently broken.
+        setErr("Saved, but couldn't reach the server. Check your network or try again — you'll land on the home screen anyway.");
+        setTimeout(() => onSaved(), 1200);
       }
       setVerifying(false);
     }
@@ -790,7 +803,19 @@ function HomeScreen({ refreshKey, onOpenSeries, onPlayDue, onPlayBrief, onPlayAr
   }, [refreshKey]);
 
   if (loading) return <div className="page"><div className="empty"><div className="empty-icon">⏳</div>Loading your day…</div></div>;
-  if (error) return <div className="page"><div className="empty"><div className="empty-icon">⚠</div>Couldn't load: {error}<br/>Check your token in Settings.</div></div>;
+  if (error) {
+    const isAuth = /unauthorized|401|403|no token/i.test(error);
+    return (
+      <div className="page">
+        <div className="empty">
+          <div className="empty-icon">⚠</div>
+          Couldn't load: {error}
+          <br/>
+          {isAuth ? "Open Settings to paste a fresh token." : "Try again in a moment — the server may be slow. Settings has a manual cache clear if it persists."}
+        </div>
+      </div>
+    );
+  }
 
   const queueLength = briefsReady.length + due.length + articles.length;
   const queueMin = (briefsReady.length * 5) + (due.length * 10) + (articles.length * 6);
@@ -884,21 +909,6 @@ function HomeScreen({ refreshKey, onOpenSeries, onPlayDue, onPlayBrief, onPlayAr
         </>
       )}
 
-      {/* Daily briefing placeholder — third audio source per UX foundation */}
-      <div className="section">
-        <div className="section-icon">🌅</div>
-        <div className="section-title">Daily briefing</div>
-      </div>
-      <div className="card">
-        <div className="row">
-          <div className="row-main">
-            <div className="row-title" style={{ color: "var(--ink-mute)" }}>Coming — auto-assembled 5-minute daily digest</div>
-            <div className="row-sub">Distinct from learning series. A fresh digest each morning of recent ingests + pending insights + open hypotheses.</div>
-          </div>
-          <span className="badge badge-muted">future</span>
-        </div>
-      </div>
-
       <div className="section">
         <div className="section-icon">📚</div>
         <div className="section-title">All series</div>
@@ -907,6 +917,13 @@ function HomeScreen({ refreshKey, onOpenSeries, onPlayDue, onPlayBrief, onPlayAr
       {gaps.slice(0, 3).map((g) => (
         <SeriesCard key={g.gap_id} g={g} onClick={() => onOpenSeries(g.gap_id, g.gap_title)} />
       ))}
+      {gaps.length > 3 && (
+        <div style={{ textAlign: "center", marginTop: 10 }}>
+          <button className="play-btn-secondary" onClick={onPickFromLibrary}>
+            See all {gaps.length} series →
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -953,8 +970,13 @@ function LibraryScreen({ refreshKey, onOpenSeries, onPlayArticle, initialSubTab 
        : subTab === "articles" ? (
         <>
           <div className="subtabs" style={{ marginBottom: 14 }}>
-            {["Retrieved", "Listened", "New", "Ingest"].map((s) => (
-              <button key={s} className={"subtab" + (statusFilter === s ? " active" : "")} onClick={() => setStatusFilter(s)}>{s}</button>
+            {[
+              { value: "Retrieved", label: "Queued" },
+              { value: "Listened",  label: "Listened" },
+              { value: "New",       label: "New" },
+              { value: "Ingest",    label: "To ingest" },
+            ].map((s) => (
+              <button key={s.value} className={"subtab" + (statusFilter === s.value ? " active" : "")} onClick={() => setStatusFilter(s.value)}>{s.label}</button>
             ))}
           </div>
           {articles.length === 0 ? (
@@ -980,7 +1002,7 @@ function LibraryScreen({ refreshKey, onOpenSeries, onPlayArticle, initialSubTab 
               {legacy.length > 0 && (
                 <div style={{ marginTop: 18, textAlign: "center" }}>
                   <button className="play-btn-secondary" onClick={() => setShowLegacy(!showLegacy)}>
-                    {showLegacy ? `Hide ${legacy.length} legacy` : `Show ${legacy.length} legacy / dry-runs`}
+                    {showLegacy ? `Hide ${legacy.length} older` : `Show ${legacy.length} older series`}
                   </button>
                 </div>
               )}
@@ -1017,7 +1039,18 @@ function ModuleCard({ m, totalPositions, onPlayBrief, onPlayModule }) {
       badge = <span className="badge badge-ok">ready</span>;
       break;
     default:
-      badge = <span className="badge badge-muted">unknown</span>;
+      // F8 mitigation: surface the real upstream status with plain-English
+      // copy and a "what now" line, rather than a bare "unknown" grey.
+      if (m.status === "revision-requested") {
+        badge = <span className="badge badge-warn">needs revision</span>;
+        stateLine = <div className="state-line">Your feedback is being applied to this episode. It'll move back to "brief ready" when the rewrite is done.</div>;
+      } else if (m.status === "failed" || m.status === "error") {
+        badge = <span className="badge badge-bad">build failed</span>;
+        stateLine = <div className="state-line">Something went wrong building this episode. Try voice-reacting "rebuild" or check the pipeline page.</div>;
+      } else {
+        badge = <span className="badge badge-muted">{m.status || "unknown"}</span>;
+        stateLine = <div className="state-line">This episode is in an unrecognized state. Check the pipeline page for details.</div>;
+      }
   }
 
   return (
@@ -1095,7 +1128,6 @@ function SeriesScreen({ gapId, gapTitle, refreshKey, onPlayBrief, onPlayModule }
       <div className="card" style={{ padding: 16 }}>
         <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5 }}>
           <div><strong>Captured:</strong> {startedTs ? timeAgo(startedTs) + " (" + new Date(startedTs * 1000).toLocaleDateString() + ")" : "—"}</div>
-          <div style={{ marginTop: 4 }}><strong>Gap ID:</strong> <code style={{ fontSize: 11, fontFamily: "ui-monospace, monospace" }}>{gapId}</code></div>
           <div style={{ marginTop: 8 }}>
             <a href={NOTION_LINKS.gaps} target="_blank" style={{ color: "var(--accent)", fontSize: 13 }}>
               Open the Learning Gaps Queue in Notion →
@@ -1228,7 +1260,7 @@ function MiniPlayer({ playing, audioRef, onExpand, onStop }) {
 }
 
 // FLAG SHEET
-function FlagSheet({ moduleId, timestamp, onClose, onDone }) {
+function FlagSheet({ moduleId, timestamp, onClose, onDone, showToast }) {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const submit = async () => {
@@ -1238,7 +1270,7 @@ function FlagSheet({ moduleId, timestamp, onClose, onDone }) {
       await API.flagClaim({ module_id: moduleId, timestamp_seconds: timestamp, notes: notes.trim() });
       onDone();
     } catch (e) {
-      alert("Flag failed: " + e.message);
+      showToast && showToast("Flag failed: " + e.message);
       setSubmitting(false);
     }
   };
@@ -1259,7 +1291,7 @@ function FlagSheet({ moduleId, timestamp, onClose, onDone }) {
 }
 
 // REACT SHEET
-function ReactSheet({ moduleId, onClose, onDone }) {
+function ReactSheet({ moduleId, onClose, onDone, showToast }) {
   const [phase, setPhase] = useState("idle");
   const [transcript, setTranscript] = useState("");
   const [stage, setStage] = useState("");
@@ -1310,7 +1342,7 @@ function ReactSheet({ moduleId, onClose, onDone }) {
         await API.approve(moduleId);
         onDone("Approved by voice.");
       } catch (e) {
-        alert("Approve failed: " + e.message);
+        showToast && showToast("Approve failed: " + e.message);
         setPhase("review");
       }
       return;
@@ -1336,7 +1368,7 @@ function ReactSheet({ moduleId, onClose, onDone }) {
       }
     } catch (e) {
       clearInterval(stageTimer);
-      alert("Reaction failed: " + e.message + "\n\nYour transcript:\n\n" + t);
+      showToast && showToast("Reaction failed: " + e.message);
       setPhase("review");
     }
   };
@@ -1434,7 +1466,7 @@ function sourceContextString(src) {
   return `Captured during ${src.kind} at ${ts}.`;
 }
 
-function CaptureSheet({ kind, sourceInfo, onClose, onDone }) {
+function CaptureSheet({ kind, sourceInfo, onClose, onDone, showToast }) {
   const meta = CAPTURE_KINDS[kind];
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -1475,13 +1507,13 @@ function CaptureSheet({ kind, sourceInfo, onClose, onDone }) {
       const payload = meta.payload(text.trim(), sourceInfo);
       const res = await API[meta.api](payload);
       let msg = meta.title + " saved";
-      if (res && res.learning_gap_id) msg = `Learning gap captured: ${res.learning_gap_id.slice(0, 8)}…`;
+      if (res && res.learning_gap_id) msg = "Learning gap captured · we'll start building your series.";
       onDone(msg);
     } catch (e) {
       if (e.message && e.message.includes("mac_offline")) {
-        onDone("Captured to Notion (Mac offline — will sync when reachable)");
+        onDone("Captured · we'll finish syncing when the local agent is back online.");
       } else {
-        alert(meta.title + " failed: " + e.message);
+        showToast && showToast(meta.title + " failed: " + e.message);
         setSubmitting(false);
       }
     }
@@ -1765,12 +1797,15 @@ function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRef
       </div>
 
       {flagOpen && <FlagSheet moduleId={playing.moduleId} timestamp={Math.round(currentTime)}
+        showToast={showToast}
         onClose={() => setFlagOpen(false)}
         onDone={() => { setFlagOpen(false); showToast("Flag saved"); bumpRefresh(); }} />}
       {reactOpen && <ReactSheet moduleId={playing.moduleId}
+        showToast={showToast}
         onClose={() => setReactOpen(false)}
         onDone={(msg) => { setReactOpen(false); showToast(msg || "Reaction sent"); bumpRefresh(); }} />}
       {captureOpen && <CaptureSheet kind={captureOpen}
+        showToast={showToast}
         sourceInfo={{
           kind: playing.kind,
           moduleId: playing.moduleId,
@@ -1780,7 +1815,7 @@ function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRef
           timestamp: Math.round(currentTime),
         }}
         onClose={() => setCaptureOpen(null)}
-        onDone={(msg) => { setCaptureOpen(null); showToast(msg); }} />}
+        onDone={(msg) => { setCaptureOpen(null); showToast(msg); bumpRefresh(); }} />}
     </div>
   );
 }
