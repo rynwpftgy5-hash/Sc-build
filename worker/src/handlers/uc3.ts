@@ -41,6 +41,9 @@ export interface Uc3HandlerEnv {
 	MODULE_ERRATA_DB_ID?: string;
 	// §8.4a.21 W8.1 additions
 	MODULE_TTS_QUEUE: Queue<import("../lib/queues").ModuleTtsMessage>;
+	// Item 1 — optional Notion mirror DBs queried by captures-today.
+	INSIGHT_MIRROR_DB_ID?: string;
+	RESEARCH_NOTE_MIRROR_DB_ID?: string;
 }
 
 export async function handleUc3ModuleBrief(
@@ -455,17 +458,20 @@ export async function handleUc3CapturesToday(
 	const cutoffIso = new Date(cutoffS * 1000).toISOString();
 
 	try {
-		const [errataR, gapsR, oqsR] = await Promise.all([
+		const [errataR, gapsR, oqsR, insightsR, rnsR] = await Promise.all([
 			env.UC3_DB
 				.prepare("SELECT id, module_id, notes, timestamp_seconds, created_at FROM module_errata WHERE created_at >= ? ORDER BY created_at DESC LIMIT 50")
 				.bind(cutoffS)
 				.all<{ id: number; module_id: number; notes: string; timestamp_seconds: number | null; created_at: number }>(),
 			env.NOTION_TOKEN ? queryNotionRecent(NOTION_LEARNING_GAPS_QUEUE_DB, cutoffIso, env.NOTION_TOKEN) : Promise.resolve([]),
 			env.NOTION_TOKEN ? queryNotionRecent(NOTION_OPEN_QUESTIONS_DB, cutoffIso, env.NOTION_TOKEN) : Promise.resolve([]),
+			// Item 1C — env-gated. Only query if Campbell has set up the mirror DB.
+			(env.NOTION_TOKEN && env.INSIGHT_MIRROR_DB_ID) ? queryNotionRecent(env.INSIGHT_MIRROR_DB_ID, cutoffIso, env.NOTION_TOKEN) : Promise.resolve([]),
+			(env.NOTION_TOKEN && env.RESEARCH_NOTE_MIRROR_DB_ID) ? queryNotionRecent(env.RESEARCH_NOTE_MIRROR_DB_ID, cutoffIso, env.NOTION_TOKEN) : Promise.resolve([]),
 		]);
 
 		const items: Array<{
-			type: "errata" | "gap" | "oq";
+			type: "errata" | "gap" | "oq" | "insight" | "rn";
 			id: string;
 			content: string;
 			created_at: number;
@@ -506,6 +512,31 @@ export async function handleUc3CapturesToday(
 				created_at: Math.floor(new Date(q.created_time).getTime() / 1000),
 			});
 		}
+		// Item 1C — insights from the Notion mirror DB.
+		for (const ins of insightsR) {
+			const props = ins.properties || {};
+			// Prefer the full Claim rich_text for content; fall back to Title.
+			const claim = notionTitleText(props["Claim"]) || notionTitleText(props["Title"]) || "(empty claim)";
+			items.push({
+				type: "insight",
+				id: `insight-${ins.id}`,
+				content: claim,
+				url: ins.url,
+				created_at: Math.floor(new Date(ins.created_time).getTime() / 1000),
+			});
+		}
+		// Item 1C — research notes from the Notion mirror DB.
+		for (const rn of rnsR) {
+			const props = rn.properties || {};
+			const question = notionTitleText(props["Research Question"]) || notionTitleText(props["Title"]) || "(empty research question)";
+			items.push({
+				type: "rn",
+				id: `rn-${rn.id}`,
+				content: question,
+				url: rn.url,
+				created_at: Math.floor(new Date(rn.created_time).getTime() / 1000),
+			});
+		}
 
 		items.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
 
@@ -513,6 +544,8 @@ export async function handleUc3CapturesToday(
 			errata: items.filter((i) => i.type === "errata").length,
 			gap: items.filter((i) => i.type === "gap").length,
 			oq: items.filter((i) => i.type === "oq").length,
+			insight: items.filter((i) => i.type === "insight").length,
+			rn: items.filter((i) => i.type === "rn").length,
 		};
 
 		return { ok: true, status: 200, result: { items, counts, cutoff: cutoffS } };

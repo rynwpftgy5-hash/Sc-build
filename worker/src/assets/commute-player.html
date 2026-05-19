@@ -1343,9 +1343,11 @@ function SeriesScreen({ gapId, gapTitle, refreshKey, onPlayBrief, onPlayModule }
 // queues). Lets the user verify mid-commute captures landed without leaving
 // the surface that captured them.
 const CAPTURE_TYPE_META = {
-  errata: { icon: "🚩", label: "Flagged claim" },
-  gap:    { icon: "🎓", label: "Learning gap" },
-  oq:     { icon: "❓", label: "Open question" },
+  errata:  { icon: "🚩", label: "Flagged claim" },
+  gap:     { icon: "🎓", label: "Learning gap" },
+  oq:      { icon: "❓", label: "Open question" },
+  insight: { icon: "💡", label: "Insight" },
+  rn:      { icon: "📝", label: "Research note" },
 };
 
 function CapturesScreen({ refreshKey, onJump }) {
@@ -1392,9 +1394,14 @@ function CapturesScreen({ refreshKey, onJump }) {
       ) : (
         items.map((item) => {
           const meta = CAPTURE_TYPE_META[item.type] || { icon: "•", label: item.type };
+          // Errata → in-player jump (already loaded audio path).
+          // Insight → /insights curation surface (existing in-system surface).
+          // Gap / OQ / RN → Notion page URL (no in-system surface yet).
           const onClick = item.type === "errata"
             ? () => onJump(item.module_id, item.timestamp_seconds || 0)
-            : (item.url ? () => window.open(item.url, "_blank") : undefined);
+            : item.type === "insight"
+              ? () => window.open("/insights", "_blank")
+              : (item.url ? () => window.open(item.url, "_blank") : undefined);
           return (
             <div key={item.id} className={"card" + (onClick ? " card-tap" : "")} onClick={onClick}>
               <div className="row">

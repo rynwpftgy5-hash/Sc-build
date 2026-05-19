@@ -70,6 +70,29 @@ declare global {
 		// Optional secret — when set, /api/uc3/module-errata-create mirrors to Notion.
 		// When unset, errata writes succeed in D1 and skip Notion silently.
 		MODULE_ERRATA_DB_ID?: string;
+		// Item 1 — Cross-source captures-today completeness.
+		// Optional secrets — when set, /api/capture and /api/rn-capture mirror
+		// to dedicated Notion DBs so /api/uc3/captures-today can include them
+		// alongside errata + gaps + open questions. il-server SQLite stays
+		// canonical; these are read-only mirrors for the Captures tab.
+		//
+		// Insight Mirror Notion DB schema (Campbell creates manually):
+		//   Title (title) | Claim (rich_text)
+		//   Domain Primary (select: Policy, Economics, Technology, Cross-cutting)
+		//   Domain Secondary (select: same options, optional)
+		//   Claim Type (select: observation, hypothesis, synthesis, framing-shift)
+		//   Confidence (select: low, medium, high)
+		//   Source Doc IDs (rich_text — comma-separated)
+		//   Query Context (rich_text — where it was captured)
+		//
+		// Research Note Mirror Notion DB schema (Campbell creates manually):
+		//   Title (title) | Research Question (rich_text)
+		//   Reasoning (rich_text) | Assessment (rich_text)
+		//   Cited Sources (rich_text — comma-separated doc IDs)
+		//   Falsifiable Tests (rich_text — optional)
+		//   Source Surface (select: Commute Player, Reading Workspace, Corpus Query, Create Product, CLI)
+		INSIGHT_MIRROR_DB_ID?: string;
+		RESEARCH_NOTE_MIRROR_DB_ID?: string;
 		// §8.4a.21 W8.1 additions — Module TTS queue (replaces ctx.waitUntil for
 		// the slow generateModuleAudio path; each message gets its own fresh
 		// Worker invocation with full subrequest + wall-time budget).
@@ -191,6 +214,66 @@ interface CaptureInsightInput {
 	query_context?: string | null;
 }
 
+// Item 1B — best-effort Notion mirror writes. Pattern mirrors module-errata.ts
+// and gap-capture: env-gated, never fails the canonical request, returns the
+// created notion_page_id on success. Used by handleCaptureInsight and
+// handleRnCapture so /api/uc3/captures-today can include both types.
+
+function notionTitleProp(content: string): { title: Array<{ type: "text"; text: { content: string } }> } {
+	const safe = (content || "(empty)").trim().slice(0, 200);
+	return { title: [{ type: "text", text: { content: safe } }] };
+}
+function notionRichTextProp(content: string | null | undefined): { rich_text: Array<{ type: "text"; text: { content: string } }> } {
+	const s = (content == null ? "" : String(content)).trim();
+	if (!s) return { rich_text: [] };
+	const chunks: Array<{ type: "text"; text: { content: string } }> = [];
+	for (let i = 0; i < s.length; i += 2000) {
+		chunks.push({ type: "text", text: { content: s.slice(i, i + 2000) } });
+	}
+	return { rich_text: chunks };
+}
+function notionSelectProp(name: string | null | undefined): { select: { name: string } | null } {
+	const n = (name || "").trim();
+	if (!n) return { select: null };
+	return { select: { name: n } };
+}
+
+async function writeInsightMirror(input: CaptureInsightInput, env: Env): Promise<string | null> {
+	if (!env.INSIGHT_MIRROR_DB_ID || !env.NOTION_TOKEN) return null;
+	const titleText = input.claim.replace(/\s+/g, " ").trim().slice(0, 80) + (input.claim.length > 80 ? "…" : "");
+	const properties: Record<string, unknown> = {
+		Title: notionTitleProp(titleText),
+		Claim: notionRichTextProp(input.claim),
+		"Domain Primary": notionSelectProp(input.domain_primary),
+		"Domain Secondary": notionSelectProp(input.domain_secondary ?? null),
+		"Claim Type": notionSelectProp(input.claim_type ?? "observation"),
+		Confidence: notionSelectProp(input.confidence ?? "medium"),
+		"Source Doc IDs": notionRichTextProp((input.source_doc_ids ?? []).join(", ")),
+		"Query Context": notionRichTextProp(input.query_context ?? ""),
+	};
+	try {
+		const resp = await fetch("https://api.notion.com/v1/pages", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${env.NOTION_TOKEN}`,
+				"Notion-Version": "2022-06-28",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ parent: { database_id: env.INSIGHT_MIRROR_DB_ID }, properties }),
+			signal: AbortSignal.timeout(15_000),
+		});
+		if (!resp.ok) {
+			console.warn(`insight-mirror Notion write ${resp.status}:`, (await resp.text()).slice(0, 300));
+			return null;
+		}
+		const page = (await resp.json()) as { id: string };
+		return page.id;
+	} catch (err) {
+		console.warn("insight-mirror Notion write threw:", (err as Error).message);
+		return null;
+	}
+}
+
 async function handleCaptureInsight(input: CaptureInsightInput, env: Env) {
 	const macPayload = {
 		claim: input.claim,
@@ -207,7 +290,7 @@ async function handleCaptureInsight(input: CaptureInsightInput, env: Env) {
 		recorded_at: new Date().toISOString(),
 	};
 
-	const [macResult, notionResult] = await Promise.allSettled([
+	const [macResult, notionResult, mirrorResult] = await Promise.allSettled([
 		postJson(
 			`${env.IL_SERVER_FUNNEL_URL}/capture`,
 			env.IL_SERVER_TOKEN,
@@ -220,7 +303,11 @@ async function handleCaptureInsight(input: CaptureInsightInput, env: Env) {
 			notionPayload,
 			20_000,
 		),
+		// Item 1B — direct Notion mirror so /api/uc3/captures-today can include
+		// insights without depending on the n8n flow's destination DB ID.
+		writeInsightMirror(input, env),
 	]);
+	const mirrorPageId: string | null = mirrorResult.status === "fulfilled" ? mirrorResult.value : null;
 
 	let macLanded = false;
 	let insightId: string | null = null;
@@ -292,6 +379,7 @@ async function handleCaptureInsight(input: CaptureInsightInput, env: Env) {
 		notion_landed: notionLanded,
 		mac_error: macError,
 		notion_error: notionError,
+		mirror_page_id: mirrorPageId,
 		message,
 	};
 }
@@ -1190,6 +1278,43 @@ interface RnCaptureInput {
 	notes?: string;
 }
 
+// Item 1B — best-effort Notion mirror for RN captures. Mirrors module-errata.ts
+// pattern: env-gated, never blocks the canonical il-server write.
+async function writeRnMirror(input: RnCaptureInput, env: Env): Promise<string | null> {
+	if (!env.RESEARCH_NOTE_MIRROR_DB_ID || !env.NOTION_TOKEN) return null;
+	const titleText = input.research_question.replace(/\s+/g, " ").trim().slice(0, 100) + (input.research_question.length > 100 ? "…" : "");
+	const properties: Record<string, unknown> = {
+		Title: notionTitleProp(titleText),
+		"Research Question": notionRichTextProp(input.research_question),
+		Reasoning: notionRichTextProp(input.reasoning),
+		Assessment: notionRichTextProp(input.assessment),
+		"Cited Sources": notionRichTextProp((input.cited_urls ?? []).join(", ")),
+		"Falsifiable Tests": notionRichTextProp((input.falsifiable_tests ?? []).join("\n")),
+		"Source Surface": notionSelectProp(input.parent_surface || "CLI"),
+	};
+	try {
+		const resp = await fetch("https://api.notion.com/v1/pages", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${env.NOTION_TOKEN}`,
+				"Notion-Version": "2022-06-28",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ parent: { database_id: env.RESEARCH_NOTE_MIRROR_DB_ID }, properties }),
+			signal: AbortSignal.timeout(15_000),
+		});
+		if (!resp.ok) {
+			console.warn(`rn-mirror Notion write ${resp.status}:`, (await resp.text()).slice(0, 300));
+			return null;
+		}
+		const page = (await resp.json()) as { id: string };
+		return page.id;
+	} catch (err) {
+		console.warn("rn-mirror Notion write threw:", (err as Error).message);
+		return null;
+	}
+}
+
 async function handleRnCapture(input: RnCaptureInput, env: Env) {
 	if (!env.IL_SERVER_FUNNEL_URL || !env.IL_SERVER_TOKEN) {
 		return {
@@ -1209,27 +1334,36 @@ async function handleRnCapture(input: RnCaptureInput, env: Env) {
 			error: `missing required fields: ${missing.join(", ")}`,
 		};
 	}
-	try {
-		const r = await postJson(
+	// Item 1B: fire the canonical il-server write and the best-effort Notion
+	// mirror in parallel. il-server determines ok/error; mirror only adds the
+	// mirror_page_id field on success.
+	const [macResult, mirrorResult] = await Promise.allSettled([
+		postJson(
 			`${env.IL_SERVER_FUNNEL_URL}/rn/capture`,
 			env.IL_SERVER_TOKEN,
 			input,
 			15_000,
-		);
-		if (r.status >= 400) {
-			return { ok: false, status: r.status, error: `il-server /rn/capture ${r.status}: ${r.text.slice(0, 300)}` };
-		}
-		try {
-			return JSON.parse(r.text);
-		} catch {
-			return { ok: false, status: 502, error: "non-JSON from il-server /rn/capture", raw: r.text.slice(0, 300) };
-		}
-	} catch (err) {
-		const msg = (err as Error).message;
+		),
+		writeRnMirror(input, env),
+	]);
+	const mirrorPageId: string | null = mirrorResult.status === "fulfilled" ? mirrorResult.value : null;
+
+	if (macResult.status === "rejected") {
+		const msg = (macResult.reason as Error).message;
 		if (msg.includes("timed out") || msg.includes("fetch failed")) {
-			return MAC_OFFLINE_RESULT;
+			return { ...MAC_OFFLINE_RESULT, mirror_page_id: mirrorPageId };
 		}
-		return { ok: false, status: 502, error: `rn-capture upstream error: ${msg}` };
+		return { ok: false, status: 502, error: `rn-capture upstream error: ${msg}`, mirror_page_id: mirrorPageId };
+	}
+	const r = macResult.value;
+	if (r.status >= 400) {
+		return { ok: false, status: r.status, error: `il-server /rn/capture ${r.status}: ${r.text.slice(0, 300)}`, mirror_page_id: mirrorPageId };
+	}
+	try {
+		const parsed = JSON.parse(r.text);
+		return { ...parsed, mirror_page_id: mirrorPageId };
+	} catch {
+		return { ok: false, status: 502, error: "non-JSON from il-server /rn/capture", raw: r.text.slice(0, 300), mirror_page_id: mirrorPageId };
 	}
 }
 
