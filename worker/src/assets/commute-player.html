@@ -494,7 +494,7 @@ const API = {
   capturesToday: () => API._get("/api/uc3/captures-today"),
   flagClaim: (body) => API._post("/api/uc3/module-errata-create", body),
   approve: (mid) => API._post("/api/uc3/module-approve", { module_id: mid }, { timeout: 15000 }),
-  retryModuleTts: (mid) => API._post("/api/uc3/module-tts", { module_id: mid }, { timeout: 15000 }),
+  retryModuleTts: (mid) => API._post("/api/uc3/module-tts", { module_id: mid, async: true }, { timeout: 15000 }),
   reactFeedback: (mid, t) => API._post("/api/uc3/module-feedback", { module_id: mid, voice_transcript: t }, { timeout: 600000 }),
   captureInsight: (body) => API._post("/api/capture", body),
   captureRn: (body) => API._post("/api/rn-capture", body),
@@ -827,6 +827,7 @@ function TrackingBanner({ record, onPlayBrief, onOpenSeries, onDismiss }) {
   // Cap visible age in the banner — if the pipeline has been running >15min
   // without a brief yet, switch copy to "this is taking longer than usual".
   const ageMin = Math.round((Date.now() / 1000 - record.started_at) / 60);
+  const TAKING_LONGER_MIN = 30; // pipeline E2E wall is ~28 min per system-map
 
   if (state.phase === "first-brief-ready" && state.briefReady) {
     const m = state.briefReady;
@@ -853,7 +854,7 @@ function TrackingBanner({ record, onPlayBrief, onOpenSeries, onDismiss }) {
     );
   }
 
-  const taking = ageMin > 15;
+  const taking = ageMin > TAKING_LONGER_MIN;
   return (
     <div style={{ padding: "14px 16px", margin: "0 0 14px 0", borderRadius: "var(--radius)", background: "var(--bg-sunken)", border: "0.5px solid var(--line-strong)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1231,6 +1232,24 @@ function SeriesScreen({ gapId, gapTitle, refreshKey, onPlayBrief, onPlayModule }
       .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
     return () => { cancelled = true; };
   }, [gapId, refreshKey]);
+
+  // N2: while any module is mid-cook (cooking | audio-cooking | needs revision)
+  // OR brief audio for any module isn't yet rendered, re-fetch pipeline-status
+  // every 25s so the user doesn't need to reload to see progress.
+  useEffect(() => {
+    if (!data) return;
+    const mods = data.modules || [];
+    const anyCooking = mods.some(m => {
+      const st = moduleUserState(m);
+      return st === "cooking" || st === "audio-cooking";
+    });
+    if (!anyCooking) return;
+    let cancelled = false;
+    const t = setInterval(() => {
+      API.pipelineStatus(gapId).then((r) => { if (!cancelled) setData(r); }).catch(() => {});
+    }, 25_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [gapId, data]);
 
   if (loading) return <div className="page"><div className="empty"><div className="spinner"></div></div></div>;
   if (error) return <div className="page"><div className="empty">⚠ {error}</div></div>;
@@ -2192,6 +2211,35 @@ function App() {
   const [tracked, setTracked] = useState(() => trackingLoad());
   const refreshTracked = useCallback(() => setTracked(trackingLoad()), []);
   const untrackGap = useCallback((gap_id) => setTracked(trackingRemove(gap_id)), []);
+
+  // N3: parse window.location.hash on mount. Lets the desk open
+  // /uc3#mod=NN&t=SS and auto-load the module + seek. Format:
+  //   #mod=123&t=45    → play module 123, seek to 45s
+  //   #brief=123       → play brief audio for module 123
+  useEffect(() => {
+    const h = (typeof window !== "undefined" && window.location && window.location.hash) || "";
+    if (!h || h.length < 2) return;
+    const params = new URLSearchParams(h.slice(1));
+    const modId = params.get("mod");
+    const briefId = params.get("brief");
+    const tStr = params.get("t");
+    const t = tStr ? parseInt(tStr, 10) : 0;
+    if (briefId && /^\d+$/.test(briefId)) {
+      const id = parseInt(briefId, 10);
+      setTimeout(() => playAudio({
+        kind: "brief", moduleId: id, audioUrl: API.briefAudioUrl(id),
+        title: "Brief " + id, series: "Deep-linked",
+        voiceId: null,
+      }, t || 0), 0);
+    } else if (modId && /^\d+$/.test(modId)) {
+      const id = parseInt(modId, 10);
+      setTimeout(() => playAudio({
+        kind: "module", moduleId: id, audioUrl: API.moduleAudioUrl(id),
+        title: "Module " + id, series: t ? "Deep-linked at " + fmtTime(t) : "Deep-linked",
+        voiceId: null,
+      }, t || 0), 0);
+    }
+  }, []);
   const audioRef = useRef(null);
   const blobUrlRef = useRef(null);
 

@@ -181,13 +181,24 @@ export async function handleUc3ModuleApprove(
 	}
 }
 
-// §8.4a.21 W8 — POST /api/uc3/module-tts {module_id} — manual full-module TTS trigger.
+// §8.4a.21 W8 — POST /api/uc3/module-tts {module_id, async?} — manual full-module TTS trigger.
+// async=true pushes to MODULE_TTS_QUEUE and returns immediately (used by the
+// player's retry button, which doesn't want to block ~2min on the response).
+// Default behavior is synchronous for backward compat with debug paths.
 export async function handleUc3ModuleTts(
-	body: { module_id?: number },
+	body: { module_id?: number; async?: boolean },
 	env: Uc3HandlerEnv,
-): Promise<{ ok: boolean; status?: number; result?: ModuleAudioResult; error?: string }> {
+): Promise<{ ok: boolean; status?: number; result?: ModuleAudioResult | { module_id: number; queued: true }; error?: string }> {
 	if (!body?.module_id || typeof body.module_id !== "number") {
 		return { ok: false, status: 400, error: "field 'module_id' (number) required" };
+	}
+	if (body.async === true) {
+		try {
+			await env.MODULE_TTS_QUEUE.send({ module_id: body.module_id, source: "manual-retry" });
+			return { ok: true, status: 202, result: { module_id: body.module_id, queued: true } };
+		} catch (err) {
+			return { ok: false, status: 502, error: `module-tts queue send failed: ${(err as Error).message}` };
+		}
 	}
 	try {
 		const result = await generateModuleAudio(env, body.module_id);
