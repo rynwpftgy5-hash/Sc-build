@@ -1078,6 +1078,7 @@ function LibraryScreen({ refreshKey, onOpenSeries, onPlayArticle, initialSubTab 
   const [statusFilter, setStatusFilter] = useState("Retrieved");
   const [showLegacy, setShowLegacy] = useState(false);
   const [error, setError] = useState(null);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -1097,7 +1098,21 @@ function LibraryScreen({ refreshKey, onOpenSeries, onPlayArticle, initialSubTab 
 
   const real = gaps.filter(g => !isLegacyGap(g));
   const legacy = gaps.filter(isLegacyGap);
-  const shownSeries = showLegacy ? gaps : real;
+  // R9.1: client-side text search. Articles match against title +
+  // source_newsletter + source_email + domain + topics. Series match
+  // against gap_title + first_module_objective.
+  const q = query.trim().toLowerCase();
+  const inText = (s) => (typeof s === "string" ? s.toLowerCase().includes(q) : false);
+  const filteredArticles = !q ? articles : articles.filter(a =>
+    inText(a.title) || inText(a.source_newsletter) || inText(a.source_email) ||
+    (Array.isArray(a.domain) && a.domain.some(d => inText(d))) ||
+    (Array.isArray(a.topics) && a.topics.some(t => inText(t)))
+  );
+  const baseSeries = showLegacy ? gaps : real;
+  const filteredSeries = !q ? baseSeries : baseSeries.filter(g =>
+    inText(g.gap_title) || inText(g.first_module_objective)
+  );
+  const shownSeries = filteredSeries;
 
   return (
     <div className="page">
@@ -1105,6 +1120,14 @@ function LibraryScreen({ refreshKey, onOpenSeries, onPlayArticle, initialSubTab 
         <button className={"subtab" + (subTab === "articles" ? " active" : "")} onClick={() => setSubTab("articles")}>📰 Articles</button>
         <button className={"subtab" + (subTab === "series" ? " active" : "")} onClick={() => setSubTab("series")}>🎓 Series</button>
       </div>
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={subTab === "articles" ? "Search title, source, domain, topic…" : "Search series title…"}
+        aria-label="Search library"
+        style={{ width: "100%", padding: "10px 14px", borderRadius: 999, border: "0.5px solid var(--line)", background: "var(--bg-sunken)", fontSize: 14, marginBottom: 14, color: "var(--ink)" }}
+      />
 
       {loading ? <div className="empty"><div className="spinner"></div></div>
        : error ? <div className="empty">⚠ {error}</div>
@@ -1120,10 +1143,10 @@ function LibraryScreen({ refreshKey, onOpenSeries, onPlayArticle, initialSubTab 
               <button key={s.value} className={"subtab" + (statusFilter === s.value ? " active" : "")} onClick={() => setStatusFilter(s.value)}>{s.label}</button>
             ))}
           </div>
-          {articles.length === 0 ? (
-            <div className="empty"><div className="empty-icon">📰</div>No articles with status "{statusFilter}".</div>
+          {filteredArticles.length === 0 ? (
+            <div className="empty"><div className="empty-icon">📰</div>{q ? "No articles match \"" + query + "\"." : "No articles with status \"" + statusFilter + "\"."}</div>
           ) : (
-            articles.map((a) => <ArticleRow key={a.page_id} a={a} onPlay={onPlayArticle} />)
+            filteredArticles.map((a) => <ArticleRow key={a.page_id} a={a} onPlay={onPlayArticle} />)
           )}
         </>
       ) : (

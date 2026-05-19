@@ -88,6 +88,31 @@ Things that intentionally do NOT live in this repo:
   is the topic-organized field manual. §1–§11 cover the recurring shapes
   of work (ingestion, RAG, voice, deploys, etc.); consult the matching
   section before reinventing a pattern.
+- **UC3 player contracts** (load-bearing, post-2026-05-19 polish):
+  - `/api/uc3/pipeline-status` emits per-module `audio_r2_key`, `voice_id`,
+    `audio_last_error`, `audio_attempts_count`, `audio_last_attempt_at`,
+    plus `notion_page_id` at top level. UI consumers depend on the
+    failure-state trio for the F14 surface.
+  - `/api/uc3/list-briefs-ready` is the batched home-screen query —
+    replaces N-round-trip pipeline-status loop. Returns `brief_audio_bytes`
+    so the client can estimate duration (eleven_multilingual_v2 ~128kbps,
+    16 KB/s).
+  - `/api/uc3/captures-today` aggregates errata + Notion gaps + Notion OQs
+    over the last 24h. Insights and RNs land on the Mac-side il-server
+    and are *not* yet in this endpoint — see deep links in the player's
+    Captures tab.
+  - `/api/uc3/module-tts` accepts `{ async: true }` to queue via
+    MODULE_TTS_QUEUE and return 202 immediately; default sync mode is
+    retained for debug paths. The player's retry button uses async mode.
+  - `navigator.mediaSession` is wired at App level so iOS lock screen +
+    Control Center drive play/pause/seek. Don't dismantle without keeping
+    that flow whole.
+  - `localStorage.spacesc_tracking_gaps` persists the gap-capture pipeline
+    tracker across reloads; auto-prunes at 24h.
+- **ADR-024 failure register** is currently at F1–F14. F13 ("tests pass" ≠
+  user-outcome reach) and F14 (polled positive-signal-only state) are the
+  most recently added; both came from the UC3 player. Scan before any UI
+  build.
 
 ## Progressive disclosure (read on demand)
 
