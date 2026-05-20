@@ -118,7 +118,7 @@ const MIRROR_SCHEMA: Record<MirrorKind, { title: string; properties: Record<stri
 // or null. Never touches Notion. Use this from query/read paths.
 export async function getMirrorDbId(env: MirrorEnv, kind: MirrorKind): Promise<string | null> {
 	const overrideKey = ENV_OVERRIDE[kind];
-	const fromEnv = (env as Record<string, string | undefined>)[overrideKey as string];
+	const fromEnv = (env as unknown as Record<string, string | undefined>)[overrideKey as string];
 	if (fromEnv && fromEnv.trim()) return fromEnv.trim();
 	try {
 		const row = await env.UC3_DB

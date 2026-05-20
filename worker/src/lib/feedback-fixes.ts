@@ -112,6 +112,18 @@ export async function proposeFix(
 		.run();
 	const fix_id = Number((ins.meta as { last_row_id?: number }).last_row_id);
 
+	// §feedback-fix #10 mitigation (F8 catch by Campbell): when the user clicks
+	// Propose-fix, flip the ui_feedback row to 'in_progress' so the summary
+	// counts + status badges reflect the work that's happening. Don't override
+	// if it's already at a terminal state (resolved/wontfix).
+	await env.UC3_DB
+		.prepare(
+			`UPDATE ui_feedback SET status = 'in_progress'
+			 WHERE id = ? AND status NOT IN ('resolved','wontfix')`,
+		)
+		.bind(feedback_id)
+		.run();
+
 	// Try immediate dispatch IF Worker has a GitHub token. No-token path is the
 	// default and explicitly supported — the schedule trigger handles it.
 	if (env.GITHUB_TOKEN) {
