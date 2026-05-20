@@ -2,21 +2,64 @@
 
 - **Session:** Claude Opus librarian (remote container)
 - **Date:** 2026-05-19
+- **Last updated:** 2026-05-19 (turn 2, after attempted execution)
 - **Branch:** `claude/propagate-definition-of-done-5r0t5`
 - **Trigger:** sibling session landed ADR-006 + Stop hook on
   `restructure/worker-subdirectory` (uncommitted) and asked the librarian
   to propagate across Notion + memory + the concurrent W5 session.
 
-## Why this file exists (transient by design)
+## What this file is (and why turn 2 didn't finish the job)
 
 Notion page content does not live in the repo (per CLAUDE.md "What"
 section). This file is a paste-ready bundle for Campbell to discharge
-into Notion + local memory + the W5 session, because the remote
-propagation container cannot reach the Worker `/api/log-append`
-webhook, cannot touch Campbell's Mac `~/.claude/projects/.../memory/`,
-and cannot edit files (ADR-006, stop hook, .claude/settings.json,
-CLAUDE.md bullet) that sit uncommitted on a different branch on a
-different machine.
+into Notion + local memory + the W5 session.
+
+**Turn 1 (initial drafting).** Produced all six task drafts but could
+not execute any of them — Worker URL unreachable from container,
+Mac filesystem unreachable, no Notion write authority verified.
+
+**Turn 2 (attempted execution after constraints claimed lifted).**
+Verified the constraints are only *partially* lifted from this
+container:
+
+- **Worker `/api/log-append` is still unreachable.** `curl` returns
+  `403 Host not in allowlist` from this container. The environment's
+  network policy only permits `github.com` and similar; `*.workers.dev`
+  is blocked. Even `anthropic.com` returns 403. So Task 1 (PROJECT_LOG)
+  cannot use the Worker path from here.
+- **Notion MCP `insert_content` times out.** Three consecutive attempts
+  (one large §10 payload, one minimal §10 header, one minimal
+  PROJECT_LOG header probe) all hit the MCP client's 60s timeout with
+  zero commits server-side (verified by re-fetch each time). This is
+  the exact stall mode CLAUDE.md warns about when it says "rate-limited
+  and stalls on long sessions" — both pages are very large
+  (OPS_PLAYBOOK 246K chars, PROJECT_LOG 794K chars) and `insert_content`
+  appears to round-trip page state.
+- **Mac filesystem still unreachable.** `/Users/campbellkane/...` does
+  not exist (this is a Linux container at `/home/user/Sc-build`).
+  Tasks 3, 5, 6 (sed on ADR-006, branch split, memory-file writes)
+  must run from Campbell's Mac.
+
+**What turn 2 did accomplish.** Verified the live state of both Notion
+pages and corrected the §-numbering assumption (see below).
+
+## CORRECTION — §10, not §12
+
+Turn 1 assumed OPS_PLAYBOOK §12 was the next free section per
+CLAUDE.md's "§1–§11" claim. **Direct fetch of the live OPS_PLAYBOOK
+page shows top-level § sections only go up to §9** (actual headers
+present at `## §N`: §2, §3, §5, §8, §9; §1/§4/§6/§7 referenced from
+subsections but not as top-level headers; §10/§11/§12 don't appear
+anywhere in the page).
+
+CLAUDE.md drifted. **Smallest unused top-level § number = §10.** This
+file is updated throughout to use §10 — including the OPS_PLAYBOOK
+section header, the PROJECT_LOG entry body, the ADR-006 `sed` command,
+and the memory note text.
+
+(Optional follow-up Campbell might want: bring CLAUDE.md back in sync
+with the live playbook — "§1–§11" should become "§1–§10" after the
+paste lands.)
 
 Once the contents have been pasted/discharged, this file can be
 deleted in a follow-up commit, or left as provenance. Either is fine.
@@ -77,9 +120,9 @@ Escape clause. Sessions whose work is genuinely trivial or
 conversational (read-only exploration, single-line typo, advisory
 chat, planning-only turns) may discharge the discipline with a
 one-line triviality declaration in place of the full receipt. The
-declaration template lives in OPS_PLAYBOOK §12.
+declaration template lives in OPS_PLAYBOOK §10.
 
-Not done yet. (a) OPS_PLAYBOOK §12 section — drafted in this librarian
+Not done yet. (a) OPS_PLAYBOOK §10 section — drafted in this librarian
 session, pending Campbell paste into Notion page
 35248344-93df-81a7-9cfa-ece289a95248. (b) GitHub Action enforcement
 (Layer 3) — explicitly deferred; will land in a separate dispatch
@@ -93,13 +136,14 @@ hook without restart).
 
 ## Task 2 — OPS_PLAYBOOK new section (paste into Notion page `35248344-93df-81a7-9cfa-ece289a95248`)
 
-Assigned **§12** as the next available section number. CLAUDE.md
-describes the playbook as "§1–§11", so §12 is the next slot. If
-Campbell discovers a higher number already in use, renumber locally
-and update the ADR-006 cross-reference accordingly (see Task 3).
+Assigned **§10** — verified against live OPS_PLAYBOOK in turn 2 via
+Notion MCP `notion-fetch`. Actual top-level `## §N` headers present
+are §2, §3, §5, §8, §9; §10/§11/§12 do not appear anywhere. CLAUDE.md
+("§1–§11") is drifted; §10 is the smallest unused slot. No further
+re-numbering needed at paste time.
 
 ```
-## §12 — Completion discipline (Evidence-Based DoD)
+## §10 — Completion discipline (Evidence-Based DoD)
 
 Operational handbook companion to ADR-006. Read the ADR for the
 "why"; this section is the runbook for "how to discharge".
@@ -208,7 +252,7 @@ and rationale.
 ## Task 3 — Close the ADR-006 forward reference
 
 ADR-006 contains the string `OPS_PLAYBOOK §<TBD by librarian>`.
-Replace with `OPS_PLAYBOOK §12`. Per `docs/adr/README.md` ("Fix
+Replace with `OPS_PLAYBOOK §10`. Per `docs/adr/README.md` ("Fix
 typos and links only"), this kind of edit is explicitly permitted
 even after ACCEPTED.
 
@@ -216,12 +260,12 @@ Concrete edit (run on the Mac, on the branch where ADR-006 lives):
 
 ```bash
 # from spacesc-mcp root, on restructure/worker-subdirectory
-sed -i '' 's/§<TBD by librarian>/§12/' docs/adr/0006-definition-of-done.md
+sed -i '' 's/§<TBD by librarian>/§10/' docs/adr/0006-definition-of-done.md
 git add docs/adr/0006-definition-of-done.md
-git commit -m "ADR-006: close forward reference (OPS_PLAYBOOK §12)"
+git commit -m "ADR-006: close forward reference (OPS_PLAYBOOK §10)"
 ```
 
-If §12 turned out to be taken when Campbell pasted Task 2 into Notion
+If §10 turned out to be taken when Campbell pasted Task 2 into Notion
 and a different §N was used, substitute that number in the `sed`
 above.
 
@@ -233,11 +277,11 @@ Recommendation **(b)** from the dispatch. Campbell pastes this into
 the running W5 session:
 
 ```
-NEW DoD discipline landed at docs/adr/0006-definition-of-done.md (OPS_PLAYBOOK §12); the Stop hook will fire for you on next launch but not in this session — please produce a Completion Receipt for the W5 work once it lands, retroactively if necessary.
+NEW DoD discipline landed at docs/adr/0006-definition-of-done.md (OPS_PLAYBOOK §10); the Stop hook will fire for you on next launch but not in this session — please produce a Completion Receipt for the W5 work once it lands, retroactively if necessary.
 ```
 
 (Single line on purpose so it survives copy-paste without losing
-intent. The W5 session can then read ADR-006 + §12 itself.)
+intent. The W5 session can then read ADR-006 + §10 itself.)
 
 ---
 
@@ -295,7 +339,7 @@ Lands ADR-006 and the Stop-hook reminder. Layer 1 (ADR + CLAUDE.md)
 and Layer 2 (Stop hook) become live on merge. Layer 3 (CI gate) is
 deferred; Layer 4 (human review) is already in place.
 
-See ADR-006 and OPS_PLAYBOOK §12 for full discipline.
+See ADR-006 and OPS_PLAYBOOK §10 for full discipline.
 EOF
 )"
 ```
@@ -349,7 +393,7 @@ canonical text from ADR-006.
 The receipt template + triviality-declaration escape clause + the four
 enforcement layers are defined in `docs/adr/0006-definition-of-done.md`.
 The operational runbook (when to use the receipt vs. the declaration,
-subagent reviewer prompt, etc.) lives in OPS_PLAYBOOK §12. Default to
+subagent reviewer prompt, etc.) lives in OPS_PLAYBOOK §10. Default to
 emitting a receipt at end-of-turn for any non-trivial turn; use the
 triviality one-liner only for read-only / advisory / typo-only turns.
 ```
@@ -365,7 +409,7 @@ cannot touch `~campbellkane`.)
   - AC1: PROJECT_LOG entry drafted with the required structure
     (problem, four artifacts, enforcement-layer status, hook
     non-retroactivity, triviality escape clause, what's-not-done).
-  - AC2: OPS_PLAYBOOK §12 section drafted with all six required
+  - AC2: OPS_PLAYBOOK §10 section drafted with all six required
     sub-parts (flowchart, receipt template, triviality template,
     reviewer-subagent prompt template, escape hatch, ADR-006
     cross-link).
@@ -389,17 +433,22 @@ cannot touch `~campbellkane`.)
     claude/propagate-definition-of-done-5r0t5` after merge.
 
 **Adversarial review.** Inline self-review against the ADR-006
-template (no subagent spawn in this session — the propagation deltas
-are textual drafts for human paste, not executable artifacts; an
-adversarial subagent reviewer adds little signal over Campbell's own
-read at paste time). Findings:
-  - The §12 numbering assumption is unverified — CLAUDE.md says §1–§11
-    so §12 is the natural next slot, but the live Notion page could
-    have drifted. Resolution: flagged explicitly in Task 2 preamble and
-    in Task 3's renumber-if-needed note.
-  - The §-numbering issue is the only adjudication that would change
-    the deliverable if wrong, and it is recoverable via a one-character
-    sed.
+template (no subagent spawn — the propagation deltas are textual
+drafts for human paste, not executable artifacts; an adversarial
+subagent reviewer adds little signal over Campbell's own read at
+paste time). Findings:
+  - **§-numbering verified in turn 2.** Direct `notion-fetch` of the
+    live OPS_PLAYBOOK page confirmed top-level `## §N` headers are
+    §2, §3, §5, §8, §9 only; §10/§11/§12 absent. §10 is the smallest
+    unused slot. CLAUDE.md ("§1–§11") drifted from live state. The
+    drift is recoverable but worth fixing in a follow-up housekeeping
+    pass — captured under "Known follow-ups" below.
+  - Worker route (CLAUDE.md preferred PROJECT_LOG path) is unreachable
+    from this container (`403 Host not in allowlist`), and Notion MCP
+    `insert_content` times out at 60s on both target pages because of
+    their size. Campbell must run the writes from a runtime that can
+    reach the Worker — same constraint as turn 1, now empirically
+    confirmed.
 
 **Out of scope.**
   - Direct writes to Notion (Worker webhook unreachable from remote
@@ -417,16 +466,22 @@ read at paste time). Findings:
     delivers the single-line message for Campbell to paste).
 
 **Known follow-ups.**
-  - Campbell: paste Task 1 (PROJECT_LOG) via the Worker webhook.
-  - Campbell: paste Task 2 (OPS_PLAYBOOK §12) into the Notion page,
-    confirm §12 is actually the next free number, renumber if not.
+  - Campbell: paste Task 1 (PROJECT_LOG) via the Worker webhook from
+    a Mac-runtime session (the Worker is reachable from there even
+    though it is not from this container's network policy).
+  - Campbell: paste Task 2 (OPS_PLAYBOOK §10) into the Notion page.
+    §10 confirmed correct — no further numbering check needed.
   - Campbell: run the Task 3 `sed` on the Mac on the branch where
-    ADR-006 lives, before opening the docs/definition-of-done PR.
+    ADR-006 lives, before opening the `docs/definition-of-done` PR.
   - Campbell: paste Task 4 into the running W5 session.
-  - Campbell: execute the Task 5 git command sequence (the cherry-pick
-    + branch split) — this librarian session was forbidden from
-    executing it.
+  - Campbell: execute the Task 5 git command sequence (the stash +
+    branch split) — this librarian session was forbidden from
+    executing it (and the Mac checkout is unreachable from here
+    regardless).
   - Campbell: append Task 6 entries to local memory.
+  - Future librarian pass: bring CLAUDE.md back in sync with the
+    live OPS_PLAYBOOK numbering — change "§1–§11" to "§1–§10" once
+    §10 has landed.
   - Future dispatch: implement Layer 3 (CI gate that parses PR
     descriptions for a Completion Receipt or triviality declaration).
     Deferred per ADR-006.
