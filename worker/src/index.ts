@@ -9,6 +9,10 @@ import DESK_HTML from "./assets/desk.html";
 // 2026-05-19: classic reading workspace (was /desk in v5.1; now standalone)
 // @ts-expect-error — Wrangler Text rule
 import READING_HTML from "./assets/reading.html";
+// Item 3 Phase 1: v3 bundle preserved as fallback until Phase 2 ports the
+// CurationChat Research Session panel into the hand-coded successor.
+// @ts-expect-error — Wrangler Text rule
+import READING_V3_LEGACY_HTML from "./assets/reading-v3-legacy.html";
 // @ts-expect-error — Wrangler Text rule
 import CORPUS_HTML from "./assets/corpus.html";
 // @ts-expect-error — Wrangler Text rule
@@ -2550,6 +2554,9 @@ export default {
 		const surfaceMap: Record<string, string> = {
 			"/desk": DESK_HTML, "/desk/": DESK_HTML,
 			"/reading": READING_HTML, "/reading/": READING_HTML,
+			// Item 3 Phase 1 fallback: keep v3 reachable while the new
+			// hand-coded /reading lacks the CurationChat panel.
+			"/reading-v3-legacy": READING_V3_LEGACY_HTML, "/reading-v3-legacy/": READING_V3_LEGACY_HTML,
 			"/corpus": CORPUS_HTML, "/corpus/": CORPUS_HTML,
 			"/insights": INSIGHTS_HTML, "/insights/": INSIGHTS_HTML,
 			"/posture": POSTURE_HTML, "/posture/": POSTURE_HTML,
