@@ -25,10 +25,17 @@ import INSIGHTS_HTML from "./assets/insights.html";
 import INSIGHTS_V3_LEGACY_HTML from "./assets/insights-v3-legacy.html";
 // @ts-expect-error — Wrangler Text rule
 import POSTURE_HTML from "./assets/posture.html";
+// Item 3 monitoring: v3 bundle preserved as fallback during soak.
+// @ts-expect-error — Wrangler Text rule
+import POSTURE_V3_LEGACY_HTML from "./assets/posture-v3-legacy.html";
 // @ts-expect-error — Wrangler Text rule
 import PIPELINE_HTML from "./assets/pipeline.html";
 // @ts-expect-error — Wrangler Text rule
-import BUILDLOG_HTML from "./assets/buildlog.html";
+import PIPELINE_V3_LEGACY_HTML from "./assets/pipeline-v3-legacy.html";
+// @ts-expect-error — Wrangler Text rule
+import BUILDLOG_HTML from "./assets/log.html";
+// @ts-expect-error — Wrangler Text rule
+import BUILDLOG_V3_LEGACY_HTML from "./assets/buildlog-v3-legacy.html";
 // ADR-024: live system map (use case build tree) — canonical reference for every Claude session
 // @ts-expect-error — Wrangler Text rule
 import SYSTEM_MAP_HTML from "./assets/system-map.html";
@@ -1785,6 +1792,113 @@ async function handleLogAppend(input: LogAppendInput, env: Env) {
 	}
 }
 
+// /api/project-log-recent — read-only view into PROJECT_LOG for the /log
+// surface. Walks Notion blocks/children pagination once (up to ~500 blocks),
+// groups them into entries keyed by heading_2, returns the most recent N.
+// Each entry includes the heading title, derived status (parsed from
+// trailing tag like "[done]"/"[wip]"), iso timestamp from the block, and
+// a flattened markdown-ish body. Mirrors handleLogAppend's auth/timeout.
+interface ProjectLogRecentInput {
+	page_id?: string;
+	limit?: number; // entry cap; default 25, max 100
+}
+
+function plainFromRichText(rt: any[]): string {
+	if (!Array.isArray(rt)) return "";
+	return rt.map((r) => (r && r.plain_text) || "").join("");
+}
+
+function parseStatusTag(title: string): { status: string; cleanTitle: string } {
+	// Match a trailing [tag] or [tag: detail] on the heading.
+	const m = title.match(/\s*\[([a-z0-9_\- :]{1,32})\]\s*$/i);
+	if (!m) return { status: "", cleanTitle: title };
+	const raw = m[1].toLowerCase().trim();
+	const tag = raw.split(":")[0].trim();
+	const known = new Set(["done", "wip", "blocked", "deferred", "note", "decision", "ship", "shipped", "fix", "spike"]);
+	return { status: known.has(tag) ? tag : tag, cleanTitle: title.slice(0, m.index).trim() };
+}
+
+async function handleProjectLogRecent(input: ProjectLogRecentInput, env: Env) {
+	if (!env.NOTION_TOKEN) {
+		return { ok: false, status: 500, error: "server misconfigured: NOTION_TOKEN missing" };
+	}
+	const pageId = (input.page_id || PROJECT_LOG_PAGE_ID).replace(/-/g, "");
+	const cap = Math.min(100, Math.max(1, input.limit || 25));
+	const maxBlocks = 600; // soft cap on Notion calls — three pages of 100 plus tail
+	try {
+		const blocks: any[] = [];
+		let cursor: string | undefined = undefined;
+		// PROJECT_LOG is append-only and large. We only need the *tail* (latest
+		// entries) so we walk pages until we have enough headings — but the
+		// Notion children API only returns oldest-first, so we have to walk
+		// the whole thing once. Keep within maxBlocks to bound latency.
+		while (blocks.length < maxBlocks) {
+			const qs = new URLSearchParams({ page_size: "100" });
+			if (cursor) qs.set("start_cursor", cursor);
+			const r = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children?${qs.toString()}`, {
+				method: "GET",
+				headers: {
+					Authorization: `Bearer ${env.NOTION_TOKEN}`,
+					"Notion-Version": "2022-06-28",
+				},
+				signal: AbortSignal.timeout(20_000),
+			});
+			if (!r.ok) {
+				const t = await r.text();
+				return { ok: false, status: r.status, error: `Notion blocks/children GET ${r.status}: ${t.slice(0, 500)}` };
+			}
+			const json = (await r.json()) as any;
+			const results = json.results || [];
+			for (const b of results) blocks.push(b);
+			if (!json.has_more) break;
+			cursor = json.next_cursor;
+			if (!cursor) break;
+		}
+		// Group: each heading_2 begins a new entry; subsequent non-heading blocks
+		// are appended to its body until the next heading_2.
+		type Entry = { heading: string; status: string; created_at: string; body_md: string };
+		const entries: Entry[] = [];
+		let current: Entry | null = null;
+		for (const b of blocks) {
+			if (b.type === "heading_2") {
+				if (current) entries.push(current);
+				const raw = plainFromRichText(b.heading_2?.rich_text || []);
+				const { status, cleanTitle } = parseStatusTag(raw);
+				current = { heading: cleanTitle, status, created_at: b.created_time || "", body_md: "" };
+				continue;
+			}
+			if (!current) continue;
+			// Flatten common block types into markdown-ish text. Keep this
+			// lossy-but-readable; the /log surface only needs human display.
+			let text = "";
+			if (b.type === "paragraph") text = plainFromRichText(b.paragraph?.rich_text || []);
+			else if (b.type === "heading_3") text = "### " + plainFromRichText(b.heading_3?.rich_text || []);
+			else if (b.type === "bulleted_list_item") text = "• " + plainFromRichText(b.bulleted_list_item?.rich_text || []);
+			else if (b.type === "numbered_list_item") text = "1. " + plainFromRichText(b.numbered_list_item?.rich_text || []);
+			else if (b.type === "to_do") {
+				const checked = b.to_do?.checked ? "[x]" : "[ ]";
+				text = checked + " " + plainFromRichText(b.to_do?.rich_text || []);
+			}
+			else if (b.type === "code") text = "```\n" + plainFromRichText(b.code?.rich_text || []) + "\n```";
+			else if (b.type === "quote") text = "> " + plainFromRichText(b.quote?.rich_text || []);
+			else if (b.type === "callout") text = plainFromRichText(b.callout?.rich_text || []);
+			if (text) current.body_md += (current.body_md ? "\n" : "") + text;
+		}
+		if (current) entries.push(current);
+		// Take the last N (newest), then reverse so newest first.
+		const tail = entries.slice(-cap).reverse();
+		return {
+			ok: true as const,
+			entries: tail,
+			total_entries_seen: entries.length,
+			truncated: blocks.length >= maxBlocks,
+			page_url: `https://www.notion.so/${pageId}`,
+		};
+	} catch (err) {
+		return { ok: false, status: 502, error: `project-log-recent upstream error: ${(err as Error).message}` };
+	}
+}
+
 interface LinkSourceInput {
 	url: string;
 	parent_article_page_id?: string;
@@ -2430,6 +2544,10 @@ async function handleApiRoute(
 			const result = await handleLogAppend(body || {}, env);
 			return jsonResponse(result.ok === false ? ((result as { status?: number }).status || 502) : 200, result);
 		}
+		case "/api/project-log-recent": {
+			const result = await handleProjectLogRecent(body || {}, env);
+			return jsonResponse(result.ok === false ? ((result as { status?: number }).status || 502) : 200, result);
+		}
 		case "/api/oq-create": {
 			const result = await handleOqCreate(body || {}, env);
 			const errStatus = (result as { status?: number }).status;
@@ -2568,8 +2686,11 @@ export default {
 			"/insights": INSIGHTS_HTML, "/insights/": INSIGHTS_HTML,
 			"/insights-v3-legacy": INSIGHTS_V3_LEGACY_HTML, "/insights-v3-legacy/": INSIGHTS_V3_LEGACY_HTML,
 			"/posture": POSTURE_HTML, "/posture/": POSTURE_HTML,
+			"/posture-v3-legacy": POSTURE_V3_LEGACY_HTML, "/posture-v3-legacy/": POSTURE_V3_LEGACY_HTML,
 			"/pipeline": PIPELINE_HTML, "/pipeline/": PIPELINE_HTML,
+			"/pipeline-v3-legacy": PIPELINE_V3_LEGACY_HTML, "/pipeline-v3-legacy/": PIPELINE_V3_LEGACY_HTML,
 			"/log": BUILDLOG_HTML, "/log/": BUILDLOG_HTML,
+			"/log-v3-legacy": BUILDLOG_V3_LEGACY_HTML, "/log-v3-legacy/": BUILDLOG_V3_LEGACY_HTML,
 			"/system-map": SYSTEM_MAP_HTML, "/system-map/": SYSTEM_MAP_HTML,
 		};
 		// Hand-coded surfaces already embed their own React NavMenu — skipping
@@ -2582,6 +2703,9 @@ export default {
 			"/reading", "/reading/",
 			"/corpus", "/corpus/",
 			"/insights", "/insights/",
+			"/posture", "/posture/",
+			"/pipeline", "/pipeline/",
+			"/log", "/log/",
 			"/system-map", "/system-map/",
 		]);
 		const surfaceHtml = surfaceMap[url.pathname];
@@ -2730,7 +2854,7 @@ export default {
 		}
 
 		return new Response(
-			"SpaceSC MCP server. Endpoints: /mcp (Streamable HTTP), /sse (legacy), /api/{query,capture,search,approve,ingest-log,article,parking-lot-update,parking-lot-list,openai-classify,chat,rn-capture,gap-capture,log-append,oq-create,link-source,openai-parse-rn,tts,tts-chunked} (POST, bearer auth), /api/tts-cache/{page_id} (GET/PUT, bearer auth), /api/uc3/{pipeline-run (POST), pipeline-cancel (DELETE), pipeline-status (GET), module-revise (POST), module-brief (POST), module-feedback (POST), module-tts (POST), module-errata-create (POST), module-errata-list (GET), spaced-rep-due (GET), spaced-rep-mark-listened (POST)} (bearer auth), /api/uc3/{brief-audio,module-audio} (GET, public), /uc3 (UC3 Commute Player v2.3 standalone, public). MCP tools: query_corpus, capture_insight, search_insights, approve_insight, search_modules. Queue consumer: uc3-s5-section-drafting.",
+			"SpaceSC MCP server. Endpoints: /mcp (Streamable HTTP), /sse (legacy), /api/{query,capture,search,approve,ingest-log,article,parking-lot-update,parking-lot-list,openai-classify,chat,rn-capture,gap-capture,log-append,project-log-recent,oq-create,link-source,openai-parse-rn,tts,tts-chunked} (POST, bearer auth), /api/tts-cache/{page_id} (GET/PUT, bearer auth), /api/uc3/{pipeline-run (POST), pipeline-cancel (DELETE), pipeline-status (GET), module-revise (POST), module-brief (POST), module-feedback (POST), module-tts (POST), module-errata-create (POST), module-errata-list (GET), spaced-rep-due (GET), spaced-rep-mark-listened (POST)} (bearer auth), /api/uc3/{brief-audio,module-audio} (GET, public), /uc3 (UC3 Commute Player v2.3 standalone, public). MCP tools: query_corpus, capture_insight, search_insights, approve_insight, search_modules. Queue consumer: uc3-s5-section-drafting.",
 			{ status: 200 },
 		);
 	},

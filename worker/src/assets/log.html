@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>SpaceSC Pipeline</title>
+<title>SpaceSC Build Log</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#faf9f5">
 <style>
@@ -31,46 +31,43 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .filter-chip.active { background: var(--ink); color: var(--bg-elev); border-color: var(--ink); }
 .card { background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius-lg); margin-bottom: 10px; }
 
-.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
-.kpi-tile { background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius-lg); padding: 14px; }
-.kpi-label { font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
-.kpi-value { font-size: 24px; font-weight: 600; color: var(--ink); line-height: 1.1; }
-.kpi-value.ok { color: var(--green); }
-.kpi-value.warn { color: var(--accent-warm); }
-.kpi-value.bad { color: var(--red); }
-.kpi-sub { font-size: 12px; color: var(--ink-soft); margin-top: 3px; }
+/* Two-pane layout: sidebar of entries + detail */
+.log-grid { display: grid; grid-template-columns: 320px 1fr; gap: 14px; align-items: start; }
+@media (max-width: 760px) { .log-grid { grid-template-columns: 1fr; } }
+.entry-list { background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; max-height: calc(100vh - 180px); overflow-y: auto; }
+.entry-row { display: block; width: 100%; text-align: left; padding: 11px 14px; border-bottom: 0.5px solid var(--line); cursor: pointer; background: var(--bg-elev); }
+.entry-row:hover { background: var(--bg-sunken); }
+.entry-row.active { background: var(--bg-sunken); border-left: 3px solid var(--ink); padding-left: 11px; }
+.entry-row:last-child { border-bottom: none; }
+.entry-title { font-size: 13px; font-weight: 600; color: var(--ink); line-height: 1.35; }
+.entry-meta { font-size: 11px; color: var(--ink-mute); margin-top: 2px; display: flex; align-items: center; gap: 8px; }
+.entry-status { font-size: 10px; padding: 1px 6px; border-radius: 999px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; flex-shrink: 0; }
+.entry-status.done    { background: rgba(59,109,17,.12); color: var(--green); }
+.entry-status.shipped { background: rgba(59,109,17,.12); color: var(--green); }
+.entry-status.ship    { background: rgba(59,109,17,.12); color: var(--green); }
+.entry-status.wip     { background: rgba(24,95,165,.12); color: var(--accent); }
+.entry-status.spike   { background: rgba(83,74,183,.12); color: var(--purple); }
+.entry-status.fix     { background: rgba(83,74,183,.12); color: var(--purple); }
+.entry-status.blocked { background: rgba(163,45,45,.12); color: var(--red); }
+.entry-status.deferred{ background: rgba(133,79,11,.12); color: var(--accent-warm); }
+.entry-status.note    { background: rgba(31,29,24,.08); color: var(--ink-soft); }
+.entry-status.decision{ background: rgba(24,95,165,.12); color: var(--accent); }
+.entry-status.other   { background: rgba(31,29,24,.08); color: var(--ink-soft); }
 
-.section { margin: 20px 0 10px; display: flex; align-items: baseline; gap: 10px; }
-.section-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); flex: 1; }
-.section-meta { font-size: 12px; color: var(--ink-mute); }
+.detail { background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius-lg); padding: 20px 22px; min-height: 240px; }
+.detail-h { font-size: 20px; font-weight: 600; line-height: 1.3; margin-bottom: 6px; }
+.detail-meta { font-size: 12px; color: var(--ink-mute); margin-bottom: 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.detail-body { font-size: 14px; line-height: 1.55; color: var(--ink); white-space: pre-wrap; word-wrap: break-word; }
+.detail-body code { font-family: ui-monospace, monospace; font-size: 13px; background: var(--bg-sunken); padding: 1px 5px; border-radius: 4px; }
+.detail-body pre { background: var(--bg-sunken); border: 0.5px solid var(--line); border-radius: 8px; padding: 12px 14px; margin: 10px 0; overflow-x: auto; font-family: ui-monospace, monospace; font-size: 12.5px; line-height: 1.5; white-space: pre; }
 
-.bar-row { display: grid; grid-template-columns: 150px 1fr 50px; gap: 10px; align-items: center; padding: 6px 0; }
-.bar-row + .bar-row { border-top: 0.5px solid var(--line); }
-.bar-label { font-size: 13px; color: var(--ink); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bar-track { background: var(--bg-sunken); height: 10px; border-radius: 999px; overflow: hidden; }
-.bar-fill { height: 100%; border-radius: 999px; }
-.bar-fill.ok    { background: var(--green); }
-.bar-fill.warn  { background: var(--accent-warm); }
-.bar-fill.bad   { background: var(--red); }
-.bar-fill.info  { background: var(--accent); }
-.bar-count { font-size: 12px; color: var(--ink-soft); text-align: right; font-variant-numeric: tabular-nums; }
-
-/* Log table */
-.log-row { display: grid; grid-template-columns: 110px 1fr 90px 90px; gap: 10px; align-items: start; padding: 10px 12px; font-size: 12px; }
-.log-row + .log-row { border-top: 0.5px solid var(--line); }
-.log-title { color: var(--ink); font-weight: 500; }
-.log-meta { color: var(--ink-mute); font-family: ui-monospace, monospace; font-size: 11px; }
-.log-status { font-size: 11px; padding: 2px 7px; border-radius: 10px; border: 0.5px solid; text-align: center; }
-.log-status.success { color: var(--green); border-color: var(--green); background: rgba(59,109,17,.07); }
-.log-status.failed  { color: var(--red); border-color: var(--red); background: rgba(163,45,45,.07); }
-.log-status.skip    { color: var(--ink-mute); border-color: var(--line-strong); background: var(--bg-sunken); }
-.log-status.partial { color: var(--accent-warm); border-color: var(--accent-warm); background: rgba(133,79,11,.07); }
-.log-error { color: var(--red); font-size: 11px; margin-top: 4px; font-family: ui-monospace, monospace; max-height: 60px; overflow: hidden; }
-
+/* Empty / loading / error */
 .empty { padding: 28px 16px; text-align: center; color: var(--ink-mute); font-size: 13px; }
 .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--line); border-top-color: var(--ink-soft); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.truncation-note { font-size: 11px; color: var(--ink-mute); padding: 10px 14px; border-top: 0.5px solid var(--line); background: var(--bg-sunken); }
 
+/* Settings / Login / Toast */
 .settings-row { padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; }
 .settings-row + .settings-row { border-top: 0.5px solid var(--line); }
 .settings-label { font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
@@ -85,6 +82,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .login-btn { width: 100%; padding: 12px; border-radius: 8px; background: var(--ink); color: var(--bg-elev); font-size: 14px; font-weight: 600; border: none; }
 .toast { position: fixed; bottom: 28px; left: 50%; transform: translate(-50%, 0); background: var(--ink); color: var(--bg-elev); padding: 10px 16px; border-radius: 999px; font-size: 13px; box-shadow: var(--shadow-rise); z-index: 100; }
 
+/* NavMenu (mirrors other hand-coded surfaces) */
 .nav-pill { position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); z-index: 80; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px 7px 10px; background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); font-size: 12px; font-weight: 600; color: var(--ink); cursor: pointer; }
 .nav-pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
 .nav-pill-chev { font-size: 10px; color: var(--ink-mute); transition: transform .2s; }
@@ -110,6 +108,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 <script crossorigin src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useCallback, useMemo } = React;
+
 const BASE = "https://spacesc-mcp.75xnd2784n.workers.dev";
 const TOKEN_KEY = "spacesc_mcp_token";
 const THEME_KEY = "spacesc_theme";
@@ -141,14 +140,16 @@ const API = {
       throw e;
     }
   },
-  ingestLog: (days, limit) => API._post("/api/ingest-log", { days: days || 30, limit: limit || 200 }, { timeout: 25000 }),
+  projectLogRecent: (limit) => API._post("/api/project-log-recent", { limit: limit || 50 }, { timeout: 35000 }),
 };
 
-const WINDOW_OPTIONS = [
-  { key: "24h", label: "24h", days: 1   },
-  { key: "7d",  label: "7d",  days: 7   },
-  { key: "30d", label: "30d", days: 30  },
-  { key: "90d", label: "90d", days: 90  },
+const STATUS_FILTERS = [
+  { key: "all",     label: "All",      match: null },
+  { key: "ship",    label: "Shipped",  match: ["ship", "shipped", "done"] },
+  { key: "wip",     label: "WIP",      match: ["wip", "spike"] },
+  { key: "fix",     label: "Fixes",    match: ["fix"] },
+  { key: "blocked", label: "Blocked",  match: ["blocked"] },
+  { key: "note",    label: "Notes",    match: ["note", "decision"] },
 ];
 
 const SPACESC_TOOLS = [
@@ -158,8 +159,8 @@ const SPACESC_TOOLS = [
   { id: "corpus",   name: "Corpus",    desc: "Search the knowledge base",       icon: "🔍", href: "/corpus" },
   { id: "insights", name: "Insights",  desc: "Approve or reject claims",        icon: "💎", href: "/insights" },
   { id: "posture",  name: "Posture",   desc: "Three-domain balance",            icon: "📊", href: "/posture" },
-  { id: "pipeline", name: "Pipeline",  desc: "Ingestion health + errors",       icon: "🩺", href: "/pipeline", active: true },
-  { id: "log",      name: "Build Log", desc: "What shipped, what's next",       icon: "📒", href: "/log" },
+  { id: "pipeline", name: "Pipeline",  desc: "Ingestion health + errors",       icon: "🩺", href: "/pipeline" },
+  { id: "log",      name: "Build Log", desc: "What shipped, what's next",       icon: "📒", href: "/log", active: true },
   { id: "map",      name: "System map", desc: "Five use cases · build tree",    icon: "🗺",  href: "/system-map" },
 ];
 
@@ -175,6 +176,12 @@ function applyTheme(mode) {
   }
 }
 try { applyTheme(localStorage.getItem(THEME_KEY) || "system"); } catch (_) {}
+
+function statusClass(status) {
+  if (!status) return "other";
+  const known = ["done", "shipped", "ship", "wip", "spike", "fix", "blocked", "deferred", "note", "decision"];
+  return known.includes(status) ? status : "other";
+}
 
 function NavMenu() {
   const [open, setOpen] = useState(false);
@@ -202,207 +209,146 @@ function NavMenu() {
 }
 
 function LoginPage({ onSaved }) {
-  const [val, setVal] = useState(""); const [err, setErr] = useState(null); const [verifying, setVerifying] = useState(false);
+  const [val, setVal] = useState("");
+  const [err, setErr] = useState(null);
+  const [verifying, setVerifying] = useState(false);
   const tryToken = async () => {
     if (!val.trim()) return;
-    setVerifying(true); setErr(null); API.setToken(val.trim());
-    try { await API.ingestLog(1, 1); onSaved(); }
-    catch (e) {
-      if (e.code === "AUTH") { API.clearToken(); setErr("Token rejected."); }
+    setVerifying(true); setErr(null);
+    API.setToken(val.trim());
+    try {
+      await API.projectLogRecent(1);
+      onSaved();
+    } catch (e) {
+      if (e.code === "AUTH") { API.clearToken(); setErr("Token rejected. Paste the right one."); }
       else { setErr("Saved, but couldn't reach the server (" + (e.message || "unknown") + "). Tap Save to retry."); }
       setVerifying(false);
     }
   };
   return (
-    <div className="app"><div className="login-page">
-      <div className="login-title">SpaceSC Pipeline</div>
-      <div className="login-sub">Paste your bearer token to begin.</div>
-      <input className="login-input" type="password" placeholder="bearer token" value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") tryToken(); }} autoFocus />
-      {err && <div style={{ color: "var(--red)", fontSize: 13, marginTop: 10 }}>{err}</div>}
-      <button className="login-btn" onClick={tryToken} disabled={verifying}>{verifying ? "Verifying…" : "Save"}</button>
-    </div></div>
+    <div className="app">
+      <div className="login-page">
+        <div className="login-title">SpaceSC Build Log</div>
+        <div className="login-sub">Paste your bearer token to begin.</div>
+        <input className="login-input" type="password" placeholder="bearer token" value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") tryToken(); }} autoFocus />
+        {err && <div style={{ color: "var(--red)", fontSize: 13, marginTop: 10 }}>{err}</div>}
+        <button className="login-btn" onClick={tryToken} disabled={verifying}>{verifying ? "Verifying…" : "Save"}</button>
+      </div>
+    </div>
   );
 }
 
-// handleIngestLog returns pre-flattened rows: { t, title, status, source, stage,
-// hist, err, doc, started, finished, url }. The surface reads those flat fields
-// directly — no Notion property unwrapping here.
+function formatWhen(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const today = new Date();
+    const sameDay = d.toDateString() === today.toDateString();
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    const sameYesterday = d.toDateString() === yesterday.toDateString();
+    const hh = d.getHours().toString().padStart(2, "0");
+    const mm = d.getMinutes().toString().padStart(2, "0");
+    if (sameDay) return "Today " + hh + ":" + mm;
+    if (sameYesterday) return "Yesterday " + hh + ":" + mm;
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + hh + ":" + mm;
+  } catch (_) { return iso; }
+}
 
-function PipelineView({ refreshKey, onAuthLost }) {
-  const [windowKey, setWindowKey] = useState("7d");
-  const [statusFilter, setStatusFilter] = useState(null); // null = all
+function LogView({ refreshKey, onAuthLost, onRetry }) {
+  const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [rows, setRows] = useState([]);
+  const [entries, setEntries] = useState([]);
+  const [truncated, setTruncated] = useState(false);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [pageUrl, setPageUrl] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError(null);
-    const w = WINDOW_OPTIONS.find((x) => x.key === windowKey) || WINDOW_OPTIONS[1];
-    API.ingestLog(w.days, 500)
+    API.projectLogRecent(50)
       .then((r) => {
         if (cancelled) return;
-        const results = (r && (r.rows || r.results || r.items)) || [];
-        // handleIngestLog returns flat rows already — just normalize defaults.
-        const normalized = results.map((p, i) => ({
-          id: p.doc || p.url || ("row-" + i),
-          url: p.url || "",
-          title: p.title || "(untitled)",
-          status: (p.status || "unknown").toLowerCase(),
-          source: p.source || "",
-          stage: p.stage || "",
-          error: p.err || "",
-          started: p.started || p.t || "",
-        }));
-        setRows(normalized);
+        setEntries(r.entries || []);
+        setTruncated(!!r.truncated);
+        setPageUrl(r.page_url || "");
+        setSelectedIdx(0);
         setLoading(false);
       })
       .catch((e) => {
         if (cancelled) return;
         if (e.code === "AUTH") { onAuthLost && onAuthLost(); return; }
-        setError(e.message); setLoading(false);
+        setError(e.message);
+        setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [windowKey, refreshKey]);
+  }, [refreshKey]);
 
-  // Stats
-  const stats = useMemo(() => {
-    const total = rows.length;
-    const byStatus = {};
-    const bySource = {};
-    const byStage = {};
-    let failed = 0, skipped = 0, success = 0;
-    for (const r of rows) {
-      const st = (r.status || "unknown").toLowerCase();
-      byStatus[st] = (byStatus[st] || 0) + 1;
-      if (r.source) bySource[r.source] = (bySource[r.source] || 0) + 1;
-      if (st === "failed" || st === "error") {
-        failed += 1;
-        const k = r.stage || "(no stage)";
-        byStage[k] = (byStage[k] || 0) + 1;
-      }
-      if (st === "skip" || st === "skipped") skipped += 1;
-      if (st === "ingested" || st === "success" || st === "ok" || st === "done") success += 1;
-    }
-    const successPct = total ? Math.round((success / total) * 100) : 0;
-    const sourcesSorted = Object.entries(bySource).sort((a, b) => b[1] - a[1]);
-    const stagesSorted = Object.entries(byStage).sort((a, b) => b[1] - a[1]);
-    return { total, failed, skipped, success, successPct, byStatus, sourcesSorted, stagesSorted };
-  }, [rows]);
+  const filtered = useMemo(() => {
+    const f = STATUS_FILTERS.find((x) => x.key === filter);
+    if (!f || !f.match) return entries;
+    const set = new Set(f.match);
+    return entries.filter((e) => set.has(e.status));
+  }, [entries, filter]);
 
-  const filteredRows = useMemo(() => {
-    if (!statusFilter) return rows;
-    return rows.filter((r) => (r.status || "").toLowerCase() === statusFilter);
-  }, [rows, statusFilter]);
+  useEffect(() => { setSelectedIdx(0); }, [filter]);
 
-  const statusLevel = (st) => {
-    const s = (st || "").toLowerCase();
-    if (s === "failed" || s === "error") return "failed";
-    if (s === "skip" || s === "skipped") return "skip";
-    if (s === "partial") return "partial";
-    return "success";
-  };
-  const successLevel = stats.successPct >= 90 ? "ok" : stats.successPct >= 70 ? "warn" : "bad";
-  const failedLevel = stats.failed === 0 ? "ok" : stats.failed < 5 ? "warn" : "bad";
+  const selected = filtered[selectedIdx] || null;
+
+  if (loading) return <div className="empty"><div className="spinner"></div></div>;
+  if (error)   return <div className="empty">⚠ {error}<div style={{ marginTop: 12 }}><button className="filter-chip active" onClick={() => onRetry && onRetry()}>Retry</button></div></div>;
 
   return (
     <div>
-      <div className="filter-row" role="tablist" aria-label="Time window">
-        {WINDOW_OPTIONS.map((w) => (
-          <button key={w.key} className={"filter-chip" + (windowKey === w.key ? " active" : "")} onClick={() => setWindowKey(w.key)}>{w.label}</button>
-        ))}
+      <div className="filter-row" role="tablist" aria-label="Status filter">
+        {STATUS_FILTERS.map((f) => {
+          const count = !f.match ? entries.length : entries.filter((e) => f.match.includes(e.status)).length;
+          return (
+            <button key={f.key} className={"filter-chip" + (filter === f.key ? " active" : "")} onClick={() => setFilter(f.key)}>
+              {f.label} <span style={{ opacity: .55, marginLeft: 4 }}>{count}</span>
+            </button>
+          );
+        })}
       </div>
 
-      {loading ? <div className="empty"><div className="spinner"></div></div>
-       : error ? <div className="empty">⚠ {error}</div>
-       : (
-         <>
-           <div className="kpi-grid">
-             <div className="kpi-tile"><div className="kpi-label">Total</div><div className="kpi-value">{stats.total}</div><div className="kpi-sub">attempts in window</div></div>
-             <div className="kpi-tile"><div className="kpi-label">Success rate</div><div className={"kpi-value " + successLevel}>{stats.successPct}%</div><div className="kpi-sub">{stats.success} ingested</div></div>
-             <div className="kpi-tile"><div className="kpi-label">Failed</div><div className={"kpi-value " + failedLevel}>{stats.failed}</div><div className="kpi-sub">need attention</div></div>
-             <div className="kpi-tile"><div className="kpi-label">Skipped</div><div className="kpi-value">{stats.skipped}</div><div className="kpi-sub">intentionally</div></div>
-           </div>
+      {filtered.length === 0 ? (
+        <div className="empty">No entries match this filter.</div>
+      ) : (
+        <div className="log-grid">
+          <div className="entry-list" role="listbox" aria-label="Log entries">
+            {filtered.map((e, i) => {
+              const cls = statusClass(e.status);
+              return (
+                <button key={i} className={"entry-row" + (i === selectedIdx ? " active" : "")} onClick={() => setSelectedIdx(i)} role="option" aria-selected={i === selectedIdx}>
+                  <div className="entry-title">{e.heading || "(untitled)"}</div>
+                  <div className="entry-meta">
+                    {e.status && <span className={"entry-status " + cls}>{e.status}</span>}
+                    <span>{formatWhen(e.created_at)}</span>
+                  </div>
+                </button>
+              );
+            })}
+            {truncated && (
+              <div className="truncation-note">Tail of PROJECT_LOG only — older entries not shown. {pageUrl && <a href={pageUrl} target="_blank" rel="noopener" style={{ color: "var(--accent)", textDecoration: "none" }}>Open in Notion ↗</a>}</div>
+            )}
+          </div>
 
-           <div className="section"><div className="section-title">Status distribution</div></div>
-           <div className="card" style={{ padding: 14 }}>
-             {Object.entries(stats.byStatus).sort((a, b) => b[1] - a[1]).map(([st, n]) => {
-               const max = Math.max(1, ...Object.values(stats.byStatus));
-               const pct = Math.round((n / max) * 100);
-               const cls = statusLevel(st) === "failed" ? "bad" : statusLevel(st) === "skip" ? "info" : statusLevel(st) === "partial" ? "warn" : "ok";
-               return (
-                 <div key={st} className="bar-row">
-                   <div className="bar-label">{st}</div>
-                   <div className="bar-track"><div className={"bar-fill " + cls} style={{ width: pct + "%" }}></div></div>
-                   <div className="bar-count">{n}</div>
-                 </div>
-               );
-             })}
-           </div>
-
-           {stats.stagesSorted.length > 0 && (
-             <>
-               <div className="section"><div className="section-title">Where failures cluster</div></div>
-               <div className="card" style={{ padding: 14 }}>
-                 {stats.stagesSorted.slice(0, 10).map(([st, n]) => {
-                   const max = Math.max(1, ...stats.stagesSorted.map((x) => x[1]));
-                   const pct = Math.round((n / max) * 100);
-                   return (
-                     <div key={st} className="bar-row">
-                       <div className="bar-label" title={st}>{st}</div>
-                       <div className="bar-track"><div className="bar-fill bad" style={{ width: pct + "%" }}></div></div>
-                       <div className="bar-count">{n}</div>
-                     </div>
-                   );
-                 })}
-               </div>
-             </>
-           )}
-
-           {stats.sourcesSorted.length > 0 && (
-             <>
-               <div className="section"><div className="section-title">Sources</div></div>
-               <div className="card" style={{ padding: 14 }}>
-                 {stats.sourcesSorted.slice(0, 10).map(([src, n]) => {
-                   const max = Math.max(1, ...stats.sourcesSorted.map((x) => x[1]));
-                   const pct = Math.round((n / max) * 100);
-                   return (
-                     <div key={src} className="bar-row">
-                       <div className="bar-label" title={src}>{src}</div>
-                       <div className="bar-track"><div className="bar-fill info" style={{ width: pct + "%" }}></div></div>
-                       <div className="bar-count">{n}</div>
-                     </div>
-                   );
-                 })}
-               </div>
-             </>
-           )}
-
-           <div className="section">
-             <div className="section-title">Recent entries</div>
-             <div className="filter-row" style={{ paddingBottom: 0, marginLeft: "auto" }}>
-               <button className={"filter-chip" + (statusFilter === null ? " active" : "")} onClick={() => setStatusFilter(null)}>All</button>
-               {["failed","success","ingested","skip"].map((s) => (
-                 <button key={s} className={"filter-chip" + (statusFilter === s ? " active" : "")} onClick={() => setStatusFilter(s)}>{s}</button>
-               ))}
-             </div>
-           </div>
-           <div className="card">
-             {filteredRows.length === 0 ? <div className="empty">No entries with this filter.</div>
-              : filteredRows.slice(0, 100).map((r) => (
-                 <div key={r.id} className="log-row">
-                   <div className="log-meta" title={r.started}>{r.started ? r.started.slice(0, 16).replace("T", " ") : ""}</div>
-                   <div className="log-title">
-                     {r.url ? <a href={r.url} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "none" }}>{r.title}</a> : r.title}
-                     {r.error && <div className="log-error" title={r.error}>{r.error.slice(0, 200)}</div>}
-                   </div>
-                   <div className={"log-status " + statusLevel(r.status)}>{r.status}</div>
-                   <div className="log-meta">{r.stage || "—"}</div>
-                 </div>
-              ))}
-           </div>
-         </>
-       )}
+          {selected ? (
+            <div className="detail">
+              <div className="detail-h">{selected.heading || "(untitled)"}</div>
+              <div className="detail-meta">
+                {selected.status && <span className={"entry-status " + statusClass(selected.status)}>{selected.status}</span>}
+                <span>{formatWhen(selected.created_at)}</span>
+                {pageUrl && <a href={pageUrl} target="_blank" rel="noopener" style={{ color: "var(--accent)", textDecoration: "none" }}>Open in Notion ↗</a>}
+              </div>
+              <div className="detail-body">{selected.body_md || <span style={{ color: "var(--ink-mute)" }}>(no body)</span>}</div>
+            </div>
+          ) : (
+            <div className="detail"><div className="empty">Pick an entry on the left.</div></div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -427,8 +373,8 @@ function SettingsView({ onClearToken, showToast }) {
       <div className="card"><div className="settings-row"><div className="settings-label">Theme</div><div className="filter-row" style={{ marginTop: 8, paddingBottom: 0 }}>{["light","dark","system"].map((m) => <button key={m} className={"filter-chip" + (theme === m ? " active" : "")} onClick={() => setTheme(m)}>{m}</button>)}</div></div></div>
       <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.05, color: "var(--ink-soft)", margin: "22px 0 10px" }}>About</div>
       <div className="card">
-        <div className="settings-row"><div className="settings-label">Version</div><div className="settings-val">SpaceSC Pipeline · Phase 1 (KPIs + failure stages + recent log)</div></div>
-        <div className="settings-row"><div className="settings-label">Legacy v3 surface</div><div className="settings-val"><a href="/pipeline-v3-legacy" style={{ color: "var(--accent)", textDecoration: "none" }}>Open the v3 pipeline surface ↗</a><div style={{ fontSize: 11, color: "var(--ink-mute)", marginTop: 4 }}>Fallback if you need the original (timeline area chart, p95). Will be retired after a soak.</div></div></div>
+        <div className="settings-row"><div className="settings-label">Version</div><div className="settings-val">SpaceSC Build Log · Phase 1 (PROJECT_LOG tail viewer)</div></div>
+        <div className="settings-row"><div className="settings-label">Legacy v3 surface</div><div className="settings-val"><a href="/log-v3-legacy" style={{ color: "var(--accent)", textDecoration: "none" }}>Open the v3 build log surface ↗</a><div style={{ fontSize: 11, color: "var(--ink-mute)", marginTop: 4 }}>Fallback during soak; will be retired.</div></div></div>
       </div>
     </div>
   );
@@ -436,7 +382,7 @@ function SettingsView({ onClearToken, showToast }) {
 
 function App() {
   const [authed, setAuthed] = useState(() => API.hasToken());
-  const [view, setView] = useState("pipeline");
+  const [view, setView] = useState("log");
   const [refreshKey, setRefreshKey] = useState(0);
   const [toast, setToast] = useState(null);
   const [isOnline, setIsOnline] = useState(() => (typeof navigator !== "undefined" ? navigator.onLine !== false : true));
@@ -454,11 +400,11 @@ function App() {
       {!isOnline && <div role="status" aria-live="polite" style={{ position: "sticky", top: 0, zIndex: 70, padding: "8px 12px", background: "rgba(133,79,11,.95)", color: "#fff", fontSize: 12, fontWeight: 500, textAlign: "center" }}>⚠ You're offline.</div>}
       <div className="app">
         {view === "settings" ? (
-          <div className="topbar"><button className="topbar-back" onClick={() => setView("pipeline")} aria-label="Close settings">×</button><div className="topbar-title">Settings</div></div>
+          <div className="topbar"><button className="topbar-back" onClick={() => setView("log")} aria-label="Close settings">×</button><div className="topbar-title">Settings</div></div>
         ) : (
-          <div className="topbar"><div className="topbar-title">Pipeline</div><div className="topbar-sub">ingestion health · phase 1</div><button className="topbar-gear" onClick={() => setRefreshKey((k) => k + 1)} aria-label="Refresh">↻</button><button className="topbar-gear" onClick={() => setView("settings")} aria-label="Settings">⚙</button></div>
+          <div className="topbar"><div className="topbar-title">Build Log</div><div className="topbar-sub">project log tail · phase 1</div><button className="topbar-gear" onClick={() => setRefreshKey((k) => k + 1)} aria-label="Refresh">↻</button><button className="topbar-gear" onClick={() => setView("settings")} aria-label="Settings">⚙</button></div>
         )}
-        {view === "pipeline" && <PipelineView refreshKey={refreshKey} onAuthLost={onAuthLost} />}
+        {view === "log" && <LogView refreshKey={refreshKey} onAuthLost={onAuthLost} onRetry={() => setRefreshKey((k) => k + 1)} />}
         {view === "settings" && <SettingsView onClearToken={onAuthLost} showToast={showToast} />}
       </div>
       {toast && <div className="toast" role="status" aria-live="polite">{toast.msg}</div>}
