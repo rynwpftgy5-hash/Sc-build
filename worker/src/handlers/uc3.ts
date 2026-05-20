@@ -26,6 +26,7 @@ import { generateBrief } from "../lib/review-brief";
 import { generateModuleAudio, type ModuleAudioResult } from "../lib/module-audio";
 import { createErrata, listErrata, type CreateErrataInput } from "../lib/module-errata";
 import { generateDailyBriefing } from "../lib/daily-briefing";
+import { getMirrorDbId } from "../lib/notion-mirror";
 import { listDueRows, markNextListened } from "../lib/spaced-rep";
 import { parseFeedback } from "../lib/feedback-parser";
 import { dispatchFeedback } from "../lib/feedback-dispatch";
@@ -458,6 +459,14 @@ export async function handleUc3CapturesToday(
 	const cutoffS = Math.floor(Date.now() / 1000) - 86400;
 	const cutoffIso = new Date(cutoffS * 1000).toISOString();
 
+	// Self-bootstrap: look up the auto-created mirror DB IDs from D1
+	// runtime_config (env override still wins). Read-only — opening the
+	// Captures tab before any capture exists does NOT trigger DB creation;
+	// that only happens on a write path inside handleCaptureInsight /
+	// handleRnCapture.
+	const insightDbId = env.NOTION_TOKEN ? await getMirrorDbId(env, "insight") : null;
+	const rnDbId = env.NOTION_TOKEN ? await getMirrorDbId(env, "rn") : null;
+
 	try {
 		const [errataR, gapsR, oqsR, insightsR, rnsR] = await Promise.all([
 			env.UC3_DB
@@ -466,9 +475,8 @@ export async function handleUc3CapturesToday(
 				.all<{ id: number; module_id: number; notes: string; timestamp_seconds: number | null; created_at: number }>(),
 			env.NOTION_TOKEN ? queryNotionRecent(NOTION_LEARNING_GAPS_QUEUE_DB, cutoffIso, env.NOTION_TOKEN) : Promise.resolve([]),
 			env.NOTION_TOKEN ? queryNotionRecent(NOTION_OPEN_QUESTIONS_DB, cutoffIso, env.NOTION_TOKEN) : Promise.resolve([]),
-			// Item 1C — env-gated. Only query if Campbell has set up the mirror DB.
-			(env.NOTION_TOKEN && env.INSIGHT_MIRROR_DB_ID) ? queryNotionRecent(env.INSIGHT_MIRROR_DB_ID, cutoffIso, env.NOTION_TOKEN) : Promise.resolve([]),
-			(env.NOTION_TOKEN && env.RESEARCH_NOTE_MIRROR_DB_ID) ? queryNotionRecent(env.RESEARCH_NOTE_MIRROR_DB_ID, cutoffIso, env.NOTION_TOKEN) : Promise.resolve([]),
+			insightDbId ? queryNotionRecent(insightDbId, cutoffIso, env.NOTION_TOKEN) : Promise.resolve([]),
+			rnDbId ? queryNotionRecent(rnDbId, cutoffIso, env.NOTION_TOKEN) : Promise.resolve([]),
 		]);
 
 		const items: Array<{

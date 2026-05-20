@@ -48,6 +48,7 @@ import { handleS5Queue } from "./queue/s5-consumer";
 import { handleModuleTtsQueue } from "./queue/module-tts-consumer";
 import type { S5DraftMessage, ModuleTtsMessage } from "./lib/queues";
 import { generateDailyBriefing } from "./lib/daily-briefing";
+import { getOrCreateMirrorDbId } from "./lib/notion-mirror";
 
 export { Uc3FundamentalsPipeline } from "./workflows/uc3-pipeline";
 
@@ -75,26 +76,13 @@ declare global {
 		// When unset, errata writes succeed in D1 and skip Notion silently.
 		MODULE_ERRATA_DB_ID?: string;
 		// Item 1 — Cross-source captures-today completeness.
-		// Optional secrets — when set, /api/capture and /api/rn-capture mirror
-		// to dedicated Notion DBs so /api/uc3/captures-today can include them
-		// alongside errata + gaps + open questions. il-server SQLite stays
-		// canonical; these are read-only mirrors for the Captures tab.
-		//
-		// Insight Mirror Notion DB schema (Campbell creates manually):
-		//   Title (title) | Claim (rich_text)
-		//   Domain Primary (select: Policy, Economics, Technology, Cross-cutting)
-		//   Domain Secondary (select: same options, optional)
-		//   Claim Type (select: observation, hypothesis, synthesis, framing-shift)
-		//   Confidence (select: low, medium, high)
-		//   Source Doc IDs (rich_text — comma-separated)
-		//   Query Context (rich_text — where it was captured)
-		//
-		// Research Note Mirror Notion DB schema (Campbell creates manually):
-		//   Title (title) | Research Question (rich_text)
-		//   Reasoning (rich_text) | Assessment (rich_text)
-		//   Cited Sources (rich_text — comma-separated doc IDs)
-		//   Falsifiable Tests (rich_text — optional)
-		//   Source Surface (select: Commute Player, Reading Workspace, Corpus Query, Create Product, CLI)
+		// Optional env overrides. The Worker self-bootstraps these DBs under
+		// PROJECT_LOG on first capture (see worker/src/lib/notion-mirror.ts),
+		// stores the IDs in the D1 runtime_config table, and reads from
+		// there on subsequent writes + captures-today reads. Setting one of
+		// these env vars manually forces the Worker to use that ID instead
+		// (useful if Campbell wants the DBs in a specific Notion workspace
+		// location). Schema is defined in lib/notion-mirror.ts MIRROR_SCHEMA.
 		INSIGHT_MIRROR_DB_ID?: string;
 		RESEARCH_NOTE_MIRROR_DB_ID?: string;
 		// §8.4a.21 W8.1 additions — Module TTS queue (replaces ctx.waitUntil for
@@ -243,7 +231,12 @@ function notionSelectProp(name: string | null | undefined): { select: { name: st
 }
 
 async function writeInsightMirror(input: CaptureInsightInput, env: Env): Promise<string | null> {
-	if (!env.INSIGHT_MIRROR_DB_ID || !env.NOTION_TOKEN) return null;
+	if (!env.NOTION_TOKEN) return null;
+	// Self-bootstrap: lookup the mirror DB ID (env-override or D1 runtime_config),
+	// or create the DB under PROJECT_LOG on first capture. Returns null if
+	// NOTION_TOKEN is unset or the create call fails.
+	const dbId = await getOrCreateMirrorDbId(env, "insight");
+	if (!dbId) return null;
 	const titleText = input.claim.replace(/\s+/g, " ").trim().slice(0, 80) + (input.claim.length > 80 ? "…" : "");
 	const properties: Record<string, unknown> = {
 		Title: notionTitleProp(titleText),
@@ -263,7 +256,7 @@ async function writeInsightMirror(input: CaptureInsightInput, env: Env): Promise
 				"Notion-Version": "2022-06-28",
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ parent: { database_id: env.INSIGHT_MIRROR_DB_ID }, properties }),
+			body: JSON.stringify({ parent: { database_id: dbId }, properties }),
 			signal: AbortSignal.timeout(15_000),
 		});
 		if (!resp.ok) {
@@ -1282,10 +1275,12 @@ interface RnCaptureInput {
 	notes?: string;
 }
 
-// Item 1B — best-effort Notion mirror for RN captures. Mirrors module-errata.ts
-// pattern: env-gated, never blocks the canonical il-server write.
+// Item 1B — best-effort Notion mirror for RN captures. Self-bootstraps the
+// target DB under PROJECT_LOG on first capture (see lib/notion-mirror.ts).
 async function writeRnMirror(input: RnCaptureInput, env: Env): Promise<string | null> {
-	if (!env.RESEARCH_NOTE_MIRROR_DB_ID || !env.NOTION_TOKEN) return null;
+	if (!env.NOTION_TOKEN) return null;
+	const dbId = await getOrCreateMirrorDbId(env, "rn");
+	if (!dbId) return null;
 	const titleText = input.research_question.replace(/\s+/g, " ").trim().slice(0, 100) + (input.research_question.length > 100 ? "…" : "");
 	const properties: Record<string, unknown> = {
 		Title: notionTitleProp(titleText),
@@ -1304,7 +1299,7 @@ async function writeRnMirror(input: RnCaptureInput, env: Env): Promise<string | 
 				"Notion-Version": "2022-06-28",
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ parent: { database_id: env.RESEARCH_NOTE_MIRROR_DB_ID }, properties }),
+			body: JSON.stringify({ parent: { database_id: dbId }, properties }),
 			signal: AbortSignal.timeout(15_000),
 		});
 		if (!resp.ok) {
