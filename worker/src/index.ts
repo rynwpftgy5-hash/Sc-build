@@ -15,6 +15,9 @@ import READING_HTML from "./assets/reading.html";
 import READING_V3_LEGACY_HTML from "./assets/reading-v3-legacy.html";
 // @ts-expect-error — Wrangler Text rule
 import CORPUS_HTML from "./assets/corpus.html";
+// Item 3 /corpus Phase 1: v3 bundle preserved as fallback during soak.
+// @ts-expect-error — Wrangler Text rule
+import CORPUS_V3_LEGACY_HTML from "./assets/corpus-v3-legacy.html";
 // @ts-expect-error — Wrangler Text rule
 import INSIGHTS_HTML from "./assets/insights.html";
 // Item 3 /insights Phase 1: v3 bundle preserved as fallback during soak.
@@ -2561,6 +2564,7 @@ export default {
 			// hand-coded /reading lacks the CurationChat panel.
 			"/reading-v3-legacy": READING_V3_LEGACY_HTML, "/reading-v3-legacy/": READING_V3_LEGACY_HTML,
 			"/corpus": CORPUS_HTML, "/corpus/": CORPUS_HTML,
+			"/corpus-v3-legacy": CORPUS_V3_LEGACY_HTML, "/corpus-v3-legacy/": CORPUS_V3_LEGACY_HTML,
 			"/insights": INSIGHTS_HTML, "/insights/": INSIGHTS_HTML,
 			"/insights-v3-legacy": INSIGHTS_V3_LEGACY_HTML, "/insights-v3-legacy/": INSIGHTS_V3_LEGACY_HTML,
 			"/posture": POSTURE_HTML, "/posture/": POSTURE_HTML,
@@ -2568,9 +2572,24 @@ export default {
 			"/log": BUILDLOG_HTML, "/log/": BUILDLOG_HTML,
 			"/system-map": SYSTEM_MAP_HTML, "/system-map/": SYSTEM_MAP_HTML,
 		};
+		// Hand-coded surfaces already embed their own React NavMenu — skipping
+		// injectNav() prevents the double-pill stacking the reviewer caught on
+		// /corpus (same defect was live on /desk, /reading, /insights since
+		// each was built; pre-existing comment in this file at the surfaceMap
+		// declaration acknowledged the duplication as a known compromise).
+		const HAND_CODED_NO_INJECT = new Set([
+			"/desk", "/desk/",
+			"/reading", "/reading/",
+			"/corpus", "/corpus/",
+			"/insights", "/insights/",
+			"/system-map", "/system-map/",
+		]);
 		const surfaceHtml = surfaceMap[url.pathname];
 		if (surfaceHtml) {
-			return new Response(injectNav(surfaceHtml), {
+			const body = HAND_CODED_NO_INJECT.has(url.pathname)
+				? surfaceHtml
+				: injectNav(surfaceHtml);
+			return new Response(body, {
 				status: 200,
 				headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=60" },
 			});
