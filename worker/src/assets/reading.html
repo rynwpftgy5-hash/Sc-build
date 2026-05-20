@@ -203,10 +203,77 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .nav-menu-item.active .nav-menu-desc { color: rgba(250,249,245,0.7); }
 .nav-menu-arrow { color: var(--ink-mute); font-size: 12px; }
 
-/* Phase 1 hint banner — explains the CurationChat omission until Phase 2 lands */
+/* Phase 1 hint banner — kept as a fallback link to v3 even after Phase 2 lands */
 .phase-banner { background: rgba(133,79,11,.07); border: 0.5px solid var(--accent-warm); border-radius: var(--radius); padding: 10px 14px; font-size: 12px; color: var(--ink-soft); margin-bottom: 14px; }
 .phase-banner a { color: var(--accent); text-decoration: none; }
 .phase-banner a:hover { text-decoration: underline; }
+
+/* Phase 2: Research session chat sheet — overlay on the right (desktop) /
+   full-screen (mobile). Mirrors the player's sheet pattern. */
+.chat-fab {
+  position: fixed; bottom: 24px; right: 24px; z-index: 90;
+  background: var(--accent); color: var(--bg-elev);
+  width: 56px; height: 56px; border-radius: 50%;
+  font-size: 22px; box-shadow: var(--shadow-rise);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.chat-sheet-backdrop { position: fixed; inset: 0; background: rgba(31,29,24,0.32); z-index: 95; }
+.chat-sheet {
+  position: fixed; bottom: 0; right: 0; z-index: 96;
+  width: min(520px, 100vw); height: min(100vh, 92vh);
+  background: var(--bg-elev); border-left: 0.5px solid var(--line);
+  border-top-left-radius: 18px;
+  display: flex; flex-direction: column;
+  box-shadow: -8px 0 30px rgba(31,29,24,0.12);
+}
+@media (max-width: 600px) { .chat-sheet { width: 100vw; border-top-right-radius: 18px; } }
+.chat-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 0.5px solid var(--line); }
+.chat-head-title { flex: 1; font-size: 14px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-head-close { font-size: 20px; color: var(--ink-soft); padding: 4px 8px; }
+
+.chat-context { padding: 10px 16px; border-bottom: 0.5px solid var(--line); background: var(--bg-sunken); font-size: 12px; color: var(--ink-soft); }
+.chat-context summary { cursor: pointer; user-select: none; outline: none; }
+.chat-context-list { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; }
+.chat-context-item { padding: 6px 8px; background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 6px; font-size: 11px; line-height: 1.4; }
+.chat-context-title { font-weight: 600; color: var(--ink); margin-bottom: 2px; }
+
+.chat-body { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.chat-msg { padding: 10px 12px; border-radius: 12px; max-width: 90%; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+.chat-msg-user { align-self: flex-end; background: var(--accent); color: var(--bg-elev); border-bottom-right-radius: 4px; }
+.chat-msg-assistant { align-self: flex-start; background: var(--bg-sunken); color: var(--ink); border-bottom-left-radius: 4px; }
+.chat-msg-thinking { align-self: flex-start; background: transparent; color: var(--ink-mute); font-style: italic; padding: 6px 12px; }
+.chat-empty { padding: 24px 8px; text-align: center; color: var(--ink-mute); font-size: 13px; line-height: 1.5; }
+
+.chat-input-row { display: flex; gap: 8px; padding: 10px 14px; border-top: 0.5px solid var(--line); align-items: flex-end; }
+.chat-input { flex: 1; min-height: 38px; max-height: 140px; padding: 8px 12px; border-radius: 16px; border: 0.5px solid var(--line); background: var(--bg-sunken); font-size: 14px; line-height: 1.4; resize: none; color: var(--ink); }
+.chat-send { padding: 8px 16px; border-radius: 999px; background: var(--ink); color: var(--bg-elev); font-size: 13px; font-weight: 600; }
+.chat-send:disabled { background: var(--line-strong); color: var(--ink-mute); cursor: not-allowed; }
+
+.chat-capture-row { display: flex; gap: 6px; padding: 8px 14px 14px; border-top: 0.5px solid var(--line); }
+.chat-capture-btn {
+  flex: 1; padding: 9px 8px; border-radius: 999px;
+  background: var(--bg-sunken); color: var(--ink); border: 0.5px solid var(--line);
+  font-size: 12px; font-weight: 500;
+}
+.chat-capture-btn:hover { border-color: var(--line-strong); }
+.chat-capture-icon { margin-right: 4px; }
+
+/* Capture sub-sheet — small modal over the chat sheet for typing a capture */
+.capture-sub-backdrop { position: fixed; inset: 0; background: rgba(31,29,24,0.48); z-index: 100; display: flex; align-items: flex-end; justify-content: center; }
+@media (min-width: 600px) { .capture-sub-backdrop { align-items: center; } }
+.capture-sub {
+  background: var(--bg-elev); border-radius: 18px 18px 0 0; padding: 20px;
+  width: 100%; max-width: 560px;
+  box-shadow: 0 -10px 40px rgba(31,29,24,0.2);
+}
+@media (min-width: 600px) { .capture-sub { border-radius: 18px; } }
+.capture-sub-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.capture-sub-sub { font-size: 12px; color: var(--ink-mute); margin-bottom: 12px; }
+.capture-sub-input { width: 100%; min-height: 100px; padding: 10px 12px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-size: 14px; line-height: 1.5; color: var(--ink); resize: vertical; }
+.capture-sub-buttons { display: flex; gap: 8px; margin-top: 12px; }
+.capture-sub-btn-sec { flex: 1; padding: 10px; border-radius: 999px; background: var(--bg-sunken); color: var(--ink); border: 0.5px solid var(--line); font-size: 13px; }
+.capture-sub-btn-pri { flex: 1; padding: 10px; border-radius: 999px; background: var(--ink); color: var(--bg-elev); border: none; font-size: 13px; font-weight: 600; }
+.capture-sub-btn-pri:disabled { background: var(--line-strong); color: var(--ink-mute); cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -272,7 +339,30 @@ const API = {
   listParkingLot: (statuses, limit) => API._post("/api/parking-lot-list", { status_filter: statuses, sort: "priority_then_email", limit: limit || 60 }),
   getArticle: (page_id) => API._post("/api/article", { page_id }),
   updateParkingLot: (page_id, properties) => API._post("/api/parking-lot-update", { page_id, properties }),
+  // Phase 2: Research Session — corpus query + Sonnet chat + 3 capture types.
+  queryCorpus: (query, limit) => API._post("/api/query", { query, limit: limit || 5 }, { timeout: 25000 }),
+  chat: (system, messages) => API._post("/api/chat", { system, messages }, { timeout: 60000 }),
+  captureInsight: (body) => API._post("/api/capture", body),
+  captureRn: (body) => API._post("/api/rn-capture", body),
+  captureOq: (body) => API._post("/api/oq-create", body),
 };
+
+// Item 4 mirror: pending-capture queue so the captures-today timeline (in /uc3)
+// shows new items immediately. Reuses the same localStorage key /uc3 owns.
+const PENDING_CAPTURES_KEY = "spacesc_pending_captures";
+function pendingAddCapture(type, content) {
+  try {
+    const raw = localStorage.getItem(PENDING_CAPTURES_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(arr)) return;
+    arr.push({
+      local_id: "local-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+      type, content: (content || "").trim(),
+      created_at: Math.floor(Date.now() / 1000),
+    });
+    localStorage.setItem(PENDING_CAPTURES_KEY, JSON.stringify(arr));
+  } catch (_) {}
+}
 
 // HELPERS
 const DOMAIN_OPTIONS = ["Policy", "Economics", "Technology", "Cross-cutting"];
@@ -544,6 +634,268 @@ function ListView({ onOpen, refreshKey, onRetry }) {
   );
 }
 
+// CAPTURE SUB-SHEET — used inside ResearchChatSheet for insight / RN / OQ capture.
+const CAPTURE_KINDS = {
+  insight: {
+    icon: "💡", title: "Capture insight",
+    placeholder: "The claim is X, observed in Y context… (this becomes the claim)",
+    api: "captureInsight",
+    payload: (text, ctx) => ({
+      claim: text,
+      claim_type: "observation",
+      domain_primary: "Cross-cutting",
+      source_doc_ids: ctx.articleId ? [ctx.articleId] : [],
+      confidence: "medium",
+      query_context: ctx.sourceContext,
+    }),
+  },
+  rn: {
+    icon: "📝", title: "Research note",
+    placeholder: "Question on top. Reasoning + assessment below.",
+    api: "captureRn",
+    payload: (text, ctx) => ({
+      research_question: text.slice(0, 200),
+      reasoning: text,
+      cited_urls: ctx.articleId ? [ctx.articleId] : [],
+      assessment: "captured-during-research-session",
+      parent_surface: "Reading Workspace",
+      parent_article_page_id: ctx.articleId || undefined,
+    }),
+  },
+  oq: {
+    icon: "❓", title: "Open question",
+    placeholder: "How exactly does X work? What would change if Y?",
+    api: "captureOq",
+    payload: (text, ctx) => ({
+      question: text,
+      domain: "Cross-cutting",
+      parent_article_page_id: ctx.articleId || undefined,
+      parent_surface: "Reading Workspace",
+      notes: ctx.sourceContext,
+    }),
+  },
+};
+
+function CaptureSubSheet({ kind, context, onClose, onDone, showToast }) {
+  const meta = CAPTURE_KINDS[kind];
+  const [text, setText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async () => {
+    if (!text.trim()) return;
+    setSubmitting(true);
+    try {
+      const payload = meta.payload(text.trim(), context);
+      const res = await API[meta.api](payload);
+      // Item 4 mirror: push pending so /uc3 Captures tab shows it instantly.
+      try { pendingAddCapture(kind, text.trim()); } catch (_) {}
+      let msg = meta.title + " saved";
+      if (res && res.learning_gap_id) msg = "Learning gap captured · we'll start building your series.";
+      onDone(msg);
+    } catch (e) {
+      if (e.message && e.message.includes("mac_offline")) {
+        try { pendingAddCapture(kind, text.trim()); } catch (_) {}
+        onDone("Captured · we'll finish syncing when the local agent is back online.");
+      } else {
+        showToast && showToast(meta.title + " failed: " + e.message);
+        setSubmitting(false);
+      }
+    }
+  };
+
+  // Keyboard: Escape closes, Cmd/Ctrl+Enter submits
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") { onClose(); e.preventDefault(); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && text.trim() && !submitting) { submit(); e.preventDefault(); return; }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [text, submitting]);
+
+  return (
+    <div className="capture-sub-backdrop" onClick={onClose}>
+      <div className="capture-sub" role="dialog" aria-modal="true" aria-label={meta.title} onClick={(e) => e.stopPropagation()}>
+        <div className="capture-sub-title">{meta.icon} {meta.title}</div>
+        <div className="capture-sub-sub">From this article · ⌘+Enter to save</div>
+        <textarea
+          className="capture-sub-input" placeholder={meta.placeholder}
+          value={text} onChange={(e) => setText(e.target.value)} autoFocus
+        />
+        <div className="capture-sub-buttons">
+          <button className="capture-sub-btn-sec" onClick={onClose}>Cancel</button>
+          <button className="capture-sub-btn-pri" onClick={submit} disabled={submitting || !text.trim()}>
+            {submitting ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// RESEARCH SESSION CHAT SHEET — auto-corpus-query on open, Sonnet chat,
+// three capture affordances. Mirrors §8.4a.17 W1-W5 CurationChat behavior.
+function ResearchChatSheet({ article, onClose, showToast }) {
+  const [chunks, setChunks] = useState(null); // null = loading; [] or array
+  const [chunksOpen, setChunksOpen] = useState(false);
+  const [chunksError, setChunksError] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [captureKind, setCaptureKind] = useState(null);
+  const bodyRef = useRef(null);
+
+  // Auto-corpus-query on open. Query = title (most semantically dense)
+  // falling back to first 200 chars of body, then blurb.
+  useEffect(() => {
+    let cancelled = false;
+    const query = (article.title || (article.full_text || "").slice(0, 200) || article.blurb || "").trim();
+    if (!query) { setChunks([]); return; }
+    setChunks(null); setChunksError(null);
+    API.queryCorpus(query, 5)
+      .then((r) => { if (!cancelled) setChunks((r && r.chunks) || []); })
+      .catch((e) => { if (!cancelled) { setChunks([]); setChunksError(e.message); } });
+    return () => { cancelled = true; };
+  }, [article.page_id]);
+
+  // Auto-scroll the body when new messages arrive.
+  useEffect(() => {
+    if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+  }, [messages.length, sending]);
+
+  const buildSystem = () => {
+    const ctx = (chunks || []).map((c, i) => {
+      const title = c.title || c.document_title || c.source_doc_id || "(untitled)";
+      const body = c.content || c.text || c.excerpt || "";
+      return `[${i + 1}] ${title}\n${body}`;
+    }).join("\n\n");
+    return (
+      "You're a sharp colleague helping Campbell think through an article in his analytical workbench. " +
+      "Campbell works space security cooperation policy — his frame treats SSC outcomes as the product of an institutional welfare problem across policy, economics, technology. " +
+      "Voice: insightful peer at the kitchen table. Engage with substance, surface tensions or analogies, let him steer.\n\n" +
+      `=== THE ARTICLE ===\nTitle: ${article.title || "(untitled)"}\nSource: ${article.source_newsletter || article.source_email || "unknown"}\n` +
+      (article.full_text ? `\nBody:\n${article.full_text.slice(0, 4000)}` : article.blurb ? `\nBlurb:\n${article.blurb}` : "") +
+      (ctx ? `\n\n=== RELATED CHUNKS FROM HIS CORPUS ===\n${ctx}` : "")
+    );
+  };
+
+  const send = async () => {
+    const t = input.trim();
+    if (!t || sending) return;
+    const next = [...messages, { role: "user", content: t }];
+    setMessages(next);
+    setInput("");
+    setSending(true);
+    try {
+      const r = await API.chat(buildSystem(), next);
+      const blocks = (r && r.response && r.response.content) || [];
+      const textBlock = blocks.find((b) => b && b.type === "text");
+      const reply = (textBlock && textBlock.text) || "(no response)";
+      setMessages([...next, { role: "assistant", content: reply }]);
+    } catch (e) {
+      showToast && showToast("Chat failed: " + e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const captureContext = {
+    articleId: article.page_id,
+    sourceContext: `Captured during research session for "${(article.title || "(untitled)").slice(0, 80)}" (${article.source_newsletter || article.source_email || ""}).`,
+  };
+
+  // Keyboard: Escape closes the chat (only if no capture sub-sheet is open).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (captureKind) return; // sub-sheet handles its own Esc
+      const tgt = e.target;
+      const isTyping = tgt && (tgt.tagName === "TEXTAREA" || tgt.tagName === "INPUT");
+      if (e.key === "Escape" && !isTyping) { onClose(); e.preventDefault(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [captureKind, onClose]);
+
+  return (
+    <>
+      <div className="chat-sheet-backdrop" onClick={onClose}></div>
+      <div className="chat-sheet" role="dialog" aria-modal="true" aria-label="Research session chat">
+        <div className="chat-head">
+          <div className="chat-head-title">💬 Research session · {truncate(article.title || "(untitled)", 40)}</div>
+          <button className="chat-head-close" onClick={onClose} aria-label="Close research session">×</button>
+        </div>
+
+        <div className="chat-context">
+          {chunks === null ? (
+            <span><span className="spinner" style={{ width: 11, height: 11, borderWidth: 1.5, verticalAlign: "middle", marginRight: 6 }}></span> Pulling related corpus chunks…</span>
+          ) : chunks.length === 0 ? (
+            <span>{chunksError ? `Corpus query failed: ${truncate(chunksError, 80)}` : "No related corpus chunks found — chat still works without context."}</span>
+          ) : (
+            <details open={chunksOpen} onToggle={(e) => setChunksOpen(e.currentTarget.open)}>
+              <summary>{chunks.length} related chunk{chunks.length === 1 ? "" : "s"} loaded into chat context</summary>
+              <div className="chat-context-list">
+                {chunks.map((c, i) => (
+                  <div key={i} className="chat-context-item">
+                    <div className="chat-context-title">{c.title || c.document_title || c.source_doc_id || "(untitled chunk)"}</div>
+                    <div>{truncate(c.content || c.text || c.excerpt || "", 220)}</div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+
+        <div className="chat-body" ref={bodyRef}>
+          {messages.length === 0 && !sending && (
+            <div className="chat-empty">
+              Ask anything about this article in light of your corpus.<br/>
+              <span style={{ fontSize: 12 }}>Examples: "How does this square with X I read last month?" · "What's the institutional incentive at play?"</span>
+            </div>
+          )}
+          {messages.map((m, i) => (
+            <div key={i} className={"chat-msg chat-msg-" + m.role}>{m.content}</div>
+          ))}
+          {sending && <div className="chat-msg chat-msg-thinking">Thinking…</div>}
+        </div>
+
+        <div className="chat-input-row">
+          <textarea
+            className="chat-input" value={input} onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask the corpus about this article…"
+            rows={1}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            aria-label="Chat input"
+          />
+          <button className="chat-send" onClick={send} disabled={sending || !input.trim()}>
+            {sending ? "…" : "Send"}
+          </button>
+        </div>
+
+        <div className="chat-capture-row">
+          <button className="chat-capture-btn" onClick={() => setCaptureKind("insight")} aria-label="Capture insight">
+            <span className="chat-capture-icon">💡</span>Insight
+          </button>
+          <button className="chat-capture-btn" onClick={() => setCaptureKind("rn")} aria-label="Capture research note">
+            <span className="chat-capture-icon">📝</span>Note
+          </button>
+          <button className="chat-capture-btn" onClick={() => setCaptureKind("oq")} aria-label="Save open question">
+            <span className="chat-capture-icon">❓</span>Question
+          </button>
+        </div>
+      </div>
+      {captureKind && (
+        <CaptureSubSheet
+          kind={captureKind}
+          context={captureContext}
+          onClose={() => setCaptureKind(null)}
+          onDone={(msg) => { setCaptureKind(null); showToast && showToast(msg); }}
+          showToast={showToast}
+        />
+      )}
+    </>
+  );
+}
+
 // CHIP MULTI-SELECT — used for Domain + Topics
 function ChipMultiSelect({ value, options, onToggle }) {
   const set = new Set(Array.isArray(value) ? value : (value ? [value] : []));
@@ -569,6 +921,8 @@ function DetailView({ pageId, onClose, onSavedUpdate, showToast }) {
   // savingState: "idle" | "saving" | "saved" | "error"
   const [savingState, setSavingState] = useState("idle");
   const [savingErr, setSavingErr] = useState(null);
+  // Phase 2: research session chat sheet open state
+  const [chatOpen, setChatOpen] = useState(false);
   // pending field changes (collected + debounced into one PATCH per article)
   const pendingRef = useRef({});
   const flushTimerRef = useRef(null);
@@ -620,16 +974,18 @@ function DetailView({ pageId, onClose, onSavedUpdate, showToast }) {
     setArticle((cur) => cur ? { ...cur, ...localFieldsFor(property, value, cur) } : cur);
   }, [flushPending]);
 
-  // Keyboard: Escape closes
+  // Keyboard: Escape closes detail (only when no overlay open — the chat
+  // sheet has its own Escape handler).
   useEffect(() => {
     const onKey = (e) => {
+      if (chatOpen) return;
       const tgt = e.target;
       const isTyping = tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA" || tgt.tagName === "SELECT" || tgt.isContentEditable);
       if (e.key === "Escape" && !isTyping) { onClose(); }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, chatOpen]);
 
   if (loading) return <div className="empty"><div className="spinner"></div></div>;
   if (error) return (
@@ -745,6 +1101,22 @@ function DetailView({ pageId, onClose, onSavedUpdate, showToast }) {
           <textarea className="field-textarea" value={notes} onChange={(e) => queueChange("Notes", e.target.value)} placeholder="Freeform notes." />
         </div>
       </div>
+
+      {/* Phase 2: floating action button → opens Research Session chat. */}
+      <button
+        className="chat-fab"
+        onClick={() => setChatOpen(true)}
+        aria-label="Open research session chat"
+        title="Research session"
+      >💬</button>
+
+      {chatOpen && (
+        <ResearchChatSheet
+          article={article}
+          onClose={() => setChatOpen(false)}
+          showToast={showToast}
+        />
+      )}
     </div>
   );
 }
@@ -809,17 +1181,17 @@ function SettingsView({ onClearToken, showToast }) {
       <div className="card">
         <div className="settings-row">
           <div className="settings-label">Version</div>
-          <div className="settings-val">SpaceSC Reading · Phase 1 (article + annotation)</div>
+          <div className="settings-val">SpaceSC Reading · Phase 2 (article + annotation + research-chat)</div>
         </div>
         <div className="settings-row">
           <div className="settings-label">Server</div>
           <div className="settings-val">spacesc-mcp.75xnd2784n.workers.dev</div>
         </div>
         <div className="settings-row">
-          <div className="settings-label">Need the v3 surface?</div>
+          <div className="settings-label">Legacy v3 surface</div>
           <div className="settings-val">
             <a href="/reading-v3-legacy" style={{ color: "var(--accent)", textDecoration: "none" }}>Open the v3 reading workspace ↗</a>
-            <div style={{ fontSize: 11, color: "var(--ink-mute)", marginTop: 4 }}>v3 still has the CurationChat research-session panel. Phase 2 will port it.</div>
+            <div style={{ fontSize: 11, color: "var(--ink-mute)", marginTop: 4 }}>Fallback if you need the original surface for any reason. Will be retired after a soak.</div>
           </div>
         </div>
       </div>
@@ -900,17 +1272,12 @@ function App() {
         ) : (
           <div className="topbar">
             <div className="topbar-title">Reading</div>
-            <div className="topbar-sub">Phase 1 · annotation only</div>
+            <div className="topbar-sub">read · annotate · research-chat</div>
             <button className="topbar-gear" onClick={bumpRefresh} aria-label="Refresh">↻</button>
             <button className="topbar-gear" onClick={openSettings} aria-label="Settings">⚙</button>
           </div>
         )}
 
-        {!isDetail && !isSettings && (
-          <div className="phase-banner">
-            Phase 1 · article body + annotation. The Research Session chat panel (CurationChat) is still on <a href="/reading-v3-legacy">the v3 workspace</a> for now; Phase 2 will port it here.
-          </div>
-        )}
 
         {view.name === "list" && (
           <ListView onOpen={openArticle} refreshKey={refreshKey} onRetry={bumpRefresh} />
