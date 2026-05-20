@@ -907,13 +907,23 @@ export class Uc3FundamentalsPipeline extends WorkflowEntrypoint<Uc3Env, Uc3Pipel
 							}
 						}
 
+						// B0 fix (W5 reviewer-blocker): when the S6 extractor returns
+						// zero claims (parse failure OR genuinely empty output), the
+						// module has nothing verifiable. The pre-fix code emitted
+						// verdict="approved" because failed===0, which combined with
+						// S7's "default to approved" bias produced a clean
+						// review-brief-pending → ship for unverified modules. New
+						// behavior: route to "revise" with an honest rationale.
+						const zeroClaims = claimIds.length === 0;
 						await insertVerificationPass(env.UC3_DB, {
 							module_id: m.id,
 							pass_number: 1,
 							pass_type: "per_claim",
 							model: MODEL_S6_VERIFY,
-							verdict: failed === 0 ? "approved" : "revise",
-							rationale: `verified ${verified}/${claimIds.length} claims; ${failed} failed and flagged for human review`,
+							verdict: zeroClaims ? "revise" : (failed === 0 ? "approved" : "revise"),
+							rationale: zeroClaims
+								? "S6 extractor returned no claims — module has no verifiable assertions. Rewrite to include grounded claims, or human-review the substance directly before publishing."
+								: `verified ${verified}/${claimIds.length} claims; ${failed} failed and flagged for human review`,
 						});
 						return { ok: true, verified, failed, total: claimIds.length };
 					},
@@ -1096,7 +1106,16 @@ export class Uc3FundamentalsPipeline extends WorkflowEntrypoint<Uc3Env, Uc3Pipel
 						.prepare("SELECT verdict FROM verification_passes WHERE module_id = ? AND pass_number = 2 ORDER BY decided_at DESC LIMIT 1")
 						.bind(m.id)
 						.first<{ verdict: string }>();
-					if (needsReview || latestS7?.verdict !== "approved") {
+					// B0 fix (W5 reviewer-blocker): also gate on the latest S6 (pass 1)
+					// verdict. Pre-fix code only checked S7, so a "revise" from S6 (now
+					// emitted on zero-claims) wouldn't stop the module from shipping if
+					// S7 still defaulted to approved. needsReview is per-claim and
+					// can't catch the zero-claims case (no rows to flag).
+					const latestS6 = await env.UC3_DB
+						.prepare("SELECT verdict FROM verification_passes WHERE module_id = ? AND pass_number = 1 ORDER BY decided_at DESC LIMIT 1")
+						.bind(m.id)
+						.first<{ verdict: string }>();
+					if (needsReview || latestS6?.verdict === "revise" || latestS7?.verdict !== "approved") {
 						await setModuleStatus(env.UC3_DB, m.id, "revision-requested");
 						anyRevision = true;
 					} else {
