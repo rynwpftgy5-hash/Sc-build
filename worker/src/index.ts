@@ -17,6 +17,9 @@ import READING_V3_LEGACY_HTML from "./assets/reading-v3-legacy.html";
 import CORPUS_HTML from "./assets/corpus.html";
 // @ts-expect-error — Wrangler Text rule
 import INSIGHTS_HTML from "./assets/insights.html";
+// Item 3 /insights Phase 1: v3 bundle preserved as fallback during soak.
+// @ts-expect-error — Wrangler Text rule
+import INSIGHTS_V3_LEGACY_HTML from "./assets/insights-v3-legacy.html";
 // @ts-expect-error — Wrangler Text rule
 import POSTURE_HTML from "./assets/posture.html";
 // @ts-expect-error — Wrangler Text rule
@@ -2559,6 +2562,7 @@ export default {
 			"/reading-v3-legacy": READING_V3_LEGACY_HTML, "/reading-v3-legacy/": READING_V3_LEGACY_HTML,
 			"/corpus": CORPUS_HTML, "/corpus/": CORPUS_HTML,
 			"/insights": INSIGHTS_HTML, "/insights/": INSIGHTS_HTML,
+			"/insights-v3-legacy": INSIGHTS_V3_LEGACY_HTML, "/insights-v3-legacy/": INSIGHTS_V3_LEGACY_HTML,
 			"/posture": POSTURE_HTML, "/posture/": POSTURE_HTML,
 			"/pipeline": PIPELINE_HTML, "/pipeline/": PIPELINE_HTML,
 			"/log": BUILDLOG_HTML, "/log/": BUILDLOG_HTML,
