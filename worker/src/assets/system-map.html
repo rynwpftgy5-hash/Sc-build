@@ -95,6 +95,7 @@ html, body {
   <a href="/posture">📊 Posture</a>
   <a href="/pipeline">🩺 Pipeline</a>
   <a href="/log">📒 Build Log</a>
+  <a href="/feedback">🚩 Reports</a>
   <a href="/system-map" class="active" aria-current="page">🗺 System map</a>
 </nav>
 <div class="page-header">
@@ -386,13 +387,23 @@ const UCS = [
       {
         label:'Voice quality · §8.4a.23',
         features:[
-          {status:'queued', title:'§8.4a.23 Voice rotation',       badge:'Opus design', ref:'Sketched',           desc:'Shared voice pool across review briefs (S8), full-module TTS (S11), and Commute Player article playback. Same voice within a single module session for coherence, varied across modules to reduce review fatigue. Integrates after W8 lands single-voice baseline.'},
+          {status:'live', title:'§8.4a.23 Voice rotation',       badge:'Live',        ref:'2026-05-18 deploy',  desc:'5-voice rotation (Antoni · Rachel · Adam · Bella · Sam) assigned by module position. Persisted on learning_modules.voice_id at S0; brief (S8) + full audio (S11) both read from that column. Player shows the persisted voice name on each episode card. Modules created before the rotation rolled out were backfilled by position on 2026-05-20 — their existing brief audio is still in the W6 default (Antoni); use the per-episode Regenerate button in the player Series view to align the audio to the rotation voice. Regen depends on ElevenLabs TTS quota — if exhausted, the player surfaces an inline ⚠ Audio generation failed banner with the quota_exceeded copy.'},
         ]
       },
       {
         label:'Briefing mode',
         features:[
           {status:'future', title:'Daily audio briefing',          badge:'Future',     ref:'Phase 3 capability',  desc:'5-minute audio digest assembled from recent ingests + pending insights + open hypotheses. Plays automatically at commute start. Distinct from §8.4a.21 fundamentals modules (which are pre-generated week-series, not daily digests).'},
+        ]
+      },
+      {
+        label:'Feedback loop · §8.4a.25',
+        features:[
+          {status:'live', title:'🚩 button — universal capture',  badge:'Live',       ref:'2026-05-20 deploy',   desc:'One-tap report on every SpaceSC surface (/uc3, /desk, /reading, /corpus, /insights, /posture, /pipeline, /log, /system-map). Captures type chip (Bug/Confusion/Feature/Question), free-text notes, and auto-context (URL, view state, currently-playing-module). Lands in D1 ui_feedback + Notion mirror (best-effort). Offline queue via localStorage; auto-drains on online/visibility. Vanilla JS asset served at /feedback-button.js so it works on hand-coded React surfaces and v3-legacy bundles alike.'},
+          {status:'live', title:'Adversarial UAT self-audit',     badge:'Live',       ref:'2026-05-20 deploy',   desc:'Every feedback capture fires a Claude Sonnet 4.6 pass that diagnoses why our ADR-024 self-audit missed it. Writes to audit_blindspots with: which F-entry was nearby, one-paragraph diagnosis, proposed_new_check. Pre-deploy gate (ADR-024 Part 3.5) requires every open blindspot in the touched-surface scope to be resolved as `applied` (promoted to F-register) or `rejected` (with rationale) before declaring done. Cost: ~$0.02/capture.'},
+          {status:'live', title:'MCP tools (session opener)',      badge:'Live',       ref:'CLAUDE.md load-bearing', desc:'search_feedback + list_open_blindspots + resolve_blindspot. CLAUDE.md instructs Claude Code to call the first two at every session start so Campbell never has to remember what he reported.'},
+          {status:'live', title:'/feedback — Reports surface',     badge:'Live',       ref:'2026-05-20 deploy',   desc:'Two-pane status surface for everything you tap 🚩 on. Summary banner (total / open / in_progress / resolved / open diagnoses). Left pane: filterable list of your captures with type icon, surface, status badge, and a 🔬 diagnosis tag showing which F-entry the analyzer flagged. Right pane: full detail — your words verbatim, the view-state at capture (URL, view, playing module, gap_id), the adversarial diagnosis (what we missed + check we should add), timeline of events, and action buttons (mark in-progress / resolved / wontfix, re-run diagnosis). Patterns tab groups by missed_check + pattern_category so recurring blind spots surface visually. Linked from every NavMenu under 🚩 Reports.'},
+          {status:'live', title:'Auto-fix loop · tiered hybrid',   badge:'Live',       ref:'2026-05-20 · §8.4a.25c', desc:'Each report gets an attempted fix on demand. Tap "Propose auto-fix" in /feedback and the system fires a GitHub Actions workflow that uses anthropics/claude-code-action@v1 to: (1) tier-classify per ADR-024 — T1 trivial / T2 judgment / T3 needs-session; (2) generate a unified diff and open a PR; (3) wait for your tap on the green "Merge (CI-gated)" button (T1) or blue "Apply (review + merge)" button (T2). T3 punts to a real Claude Code session. Merge command uses `gh pr merge --auto --squash` so the merge waits for CI green even after your click. CI is the new ci.yml workflow (typecheck + npm install). Cost: ~$0.10-0.30 per propose attempt. F-register concern about unsafe-agent auto-merge is mitigated: every merge requires explicit human click.'},
         ]
       },
     ]

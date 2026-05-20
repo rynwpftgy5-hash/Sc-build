@@ -40,6 +40,22 @@ Things that intentionally do NOT live in this repo:
 
 ## How (build conventions)
 
+- **Session opener — feedback inbox + blindspots** (§8.4a.25). On every
+  Claude Code session that touches SpaceSC UI surfaces, **first** call the
+  two MCP tools:
+  1. `search_feedback({ status: "open" })` — Campbell's 🚩 inbox across
+     /uc3, /desk, /reading, /corpus, /insights, /posture, /pipeline, /log,
+     /system-map. Each item has the surface, view state at capture, type
+     (bug/confusion/feature/question), and notes. Address these *before* he
+     has to remember and re-explain.
+  2. `list_open_blindspots()` — the adversarial UAT register. Each open
+     row is a check our ADR-024 self-audit missed when Campbell had to
+     report something. Per ADR-024 Part 3.5, the pre-deploy gate requires
+     every blindspot in the touched-surface scope to be resolved (applied
+     into the F-register or rejected with rationale) before declaring done.
+  These two calls cost a few hundred ms total. The cost of skipping them is
+  Campbell's context switch when he has to re-explain what he already
+  reported.
 - **Plan-mode discipline at every pause-for-Campbell gate** (per ADR-005
   once authored). Long-running or structural changes propose before they
   execute; the gate exists so the human review surface stays narrow.

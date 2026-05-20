@@ -1,0 +1,328 @@
+# §8.4a.25c — Auto-fix loop (tiered hybrid) with PULL architecture.
+#
+# Zero credentials required on the Worker side: this workflow has its own
+# ANTHROPIC_API_KEY and MCP_CLIENT_TOKEN secrets, and the GITHUB_TOKEN that
+# GitHub auto-issues inside Actions is enough to push branches + open PRs.
+#
+# Two trigger modes:
+#   - schedule (every 3 min) → pulls next pending fix from /api/feedback-fixes-pending
+#   - workflow_dispatch       → processes a specific feedback_id (debug / manual)
+#
+# Two job modes (resolved per run):
+#   - mode=propose → tier-classify + generate diff + open PR
+#   - mode=apply   → merge an existing PR (T1/T2 click in /feedback)
+#
+# Required GitHub Actions secrets:
+#   ANTHROPIC_API_KEY  — already present
+#   MCP_CLIENT_TOKEN   — set 2026-05-20
+
+name: Feedback fix
+run-name: "Feedback fix · ${{ inputs.feedback_id || 'schedule' }} · ${{ inputs.mode || 'propose' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      feedback_id: { description: "ui_feedback row id", required: false, type: string, default: "" }
+      fix_id:      { description: "feedback_fixes row id", required: false, type: string, default: "" }
+      mode:        { description: "propose | apply", required: false, type: string, default: "propose" }
+      pr_number:   { description: "(apply) the PR number", required: false, type: string, default: "" }
+  schedule:
+    - cron: "*/3 * * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+  id-token: write
+
+jobs:
+  propose:
+    if: github.event_name == 'schedule' || inputs.mode == 'propose' || inputs.mode == ''
+    runs-on: ubuntu-latest
+    env:
+      WORKER_BASE: "https://spacesc-mcp.75xnd2784n.workers.dev"
+      MCP_CLIENT_TOKEN: ${{ secrets.MCP_CLIENT_TOKEN }}
+    steps:
+      - name: Resolve target
+        id: target
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.feedback_id }}" ]; then
+            echo "Dispatch mode — using inputs"
+            echo "feedback_id=${{ inputs.feedback_id }}" >> $GITHUB_OUTPUT
+            echo "fix_id=${{ inputs.fix_id }}" >> $GITHUB_OUTPUT
+            echo "have_target=true" >> $GITHUB_OUTPUT
+          else
+            echo "Schedule mode — polling pending queue"
+            resp=$(curl -sS -H "Authorization: Bearer $MCP_CLIENT_TOKEN" \
+              "$WORKER_BASE/api/feedback-fixes-pending?limit=1" || echo '{}')
+            fb=$(echo "$resp" | python3 -c "import json,sys; d=json.load(sys.stdin); items=(d.get('result') or {}).get('items') or []; print(items[0]['feedback_id'] if items else '')")
+            fx=$(echo "$resp" | python3 -c "import json,sys; d=json.load(sys.stdin); items=(d.get('result') or {}).get('items') or []; print(items[0]['id'] if items else '')")
+            if [ -z "$fb" ]; then
+              echo "Nothing pending — exiting cleanly"
+              echo "have_target=false" >> $GITHUB_OUTPUT
+            else
+              echo "Picked feedback_id=$fb fix_id=$fx"
+              echo "feedback_id=$fb" >> $GITHUB_OUTPUT
+              echo "fix_id=$fx" >> $GITHUB_OUTPUT
+              echo "have_target=true" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Export env for downstream steps
+        if: steps.target.outputs.have_target == 'true'
+        run: |
+          echo "FEEDBACK_ID=${{ steps.target.outputs.feedback_id }}" >> $GITHUB_ENV
+          echo "FIX_ID=${{ steps.target.outputs.fix_id }}" >> $GITHUB_ENV
+
+      - name: Checkout
+        if: steps.target.outputs.have_target == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        if: steps.target.outputs.have_target == 'true'
+        run: |
+          git config user.name "spacesc-fix-bot"
+          git config user.email "spacesc-fix-bot@users.noreply.github.com"
+
+      - name: Fetch feedback context
+        if: steps.target.outputs.have_target == 'true'
+        run: |
+          curl -sS -H "Authorization: Bearer $MCP_CLIENT_TOKEN" \
+            "$WORKER_BASE/api/feedback-list?include_blindspots=true&limit=200" \
+            > /tmp/feedback-list.json
+          python3 - <<'PY' > /tmp/context.json
+          import json, os
+          fb_id = int(os.environ["FEEDBACK_ID"])
+          d = json.load(open('/tmp/feedback-list.json'))
+          items = (d.get('result') or {}).get('items') or []
+          row = next((i for i in items if i['id'] == fb_id), None)
+          if not row:
+              raise SystemExit(f'feedback {fb_id} not found')
+          print(json.dumps(row, indent=2))
+          PY
+
+      - name: Run Claude triage + diff
+        if: steps.target.outputs.have_target == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are the SpaceSC auto-fix agent for the feedback row referenced
+            in /tmp/context.json. Read that file first.
+
+            STEP 1 — context.json has:
+              - the user's feedback (type, surface, notes_text, view_state_json)
+              - the adversarial UAT blindspot diagnosis (missed_check, why_text,
+                proposed_new_check)
+
+            STEP 2 — tier-classify per ADR-024 (docs/adr/0024-ui-build-discipline.md):
+              - T1 (trivial): SINGLE file, < 30 lines, pure copy / nav / affordance,
+                does NOT touch D1 / auth / cron / queues / migrations.
+              - T2 (judgment): multi-file OR > 30 lines OR touches state, audio,
+                pipeline, voice rotation.
+              - T3 (needs session): schema migrations, secret rotation,
+                ADR-024 F-register growth, security, or anything you genuinely
+                cannot reason about safely.
+
+            STEP 3 — write the tier classification to /tmp/tier.json with shape:
+              {"tier":"T1|T2|T3","rationale":"...","files_to_touch":["..."]}
+
+            STEP 4 — if T3: STOP. Do not edit any files.
+
+            STEP 5 — for T1 or T2:
+              - Read CLAUDE.md and any ADR file you need.
+              - Read the file(s) listed in files_to_touch.
+              - Make the minimal change addressing the feedback AND running the
+                blindspot's proposed_new_check green where applicable.
+              - Run `npm run -s type-check` to verify your change builds.
+              - Save a short summary to /tmp/rationale.md.
+
+            CRITICAL CONSTRAINTS:
+              - No emojis in code/comments unless the surrounding file already
+                uses them.
+              - Match existing tabs/spaces of the file you're editing.
+              - Do NOT touch unrelated files. If a fix requires sprawling changes,
+                downgrade to T3.
+              - Do NOT alter ADR-024 or CLAUDE.md.
+              - Do NOT create new files unless absolutely necessary.
+              - If type-check fails after your edit, FIX it or revert + downgrade.
+
+      - name: Read tier classification
+        if: steps.target.outputs.have_target == 'true'
+        id: tier
+        run: |
+          if [ ! -f /tmp/tier.json ]; then
+            echo "tier=failed" >> $GITHUB_OUTPUT
+            echo "rationale=Claude did not produce /tmp/tier.json" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          TIER=$(python3 -c "import json; print(json.load(open('/tmp/tier.json'))['tier'])")
+          RATIONALE=$(python3 -c "import json; print(json.load(open('/tmp/tier.json'))['rationale'])")
+          echo "tier=$TIER" >> $GITHUB_OUTPUT
+          echo "rationale<<EOF" >> $GITHUB_OUTPUT
+          echo "$RATIONALE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Callback — tier classified
+        if: steps.target.outputs.have_target == 'true'
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          body = {
+            "fix_id": int(os.environ["FIX_ID"]),
+            "feedback_id": int(os.environ["FEEDBACK_ID"]),
+            "stage": "tiered",
+            "tier": "${{ steps.tier.outputs.tier }}",
+            "tier_rationale": """${{ steps.tier.outputs.rationale }}""",
+          }
+          req = urllib.request.Request(
+            os.environ["WORKER_BASE"] + "/api/feedback-fix-callback",
+            data=json.dumps(body).encode(),
+            method="POST",
+            headers={"Content-Type":"application/json","Authorization":"Bearer "+os.environ["MCP_CLIENT_TOKEN"],"User-Agent":"spacesc-fix-bot/1.0"},
+          )
+          urllib.request.urlopen(req, timeout=15).read()
+          PY
+
+      - name: Punt if T3 or analyzer failed
+        if: steps.target.outputs.have_target == 'true' && (steps.tier.outputs.tier == 'T3' || steps.tier.outputs.tier == 'failed')
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          stage = "punted" if "${{ steps.tier.outputs.tier }}" == "T3" else "failed"
+          body = {
+            "fix_id": int(os.environ["FIX_ID"]),
+            "feedback_id": int(os.environ["FEEDBACK_ID"]),
+            "stage": stage,
+            "error_text": "Tier=T3 (needs session)" if stage == "punted" else "Analyzer did not classify",
+          }
+          req = urllib.request.Request(
+            os.environ["WORKER_BASE"] + "/api/feedback-fix-callback",
+            data=json.dumps(body).encode(),
+            method="POST",
+            headers={"Content-Type":"application/json","Authorization":"Bearer "+os.environ["MCP_CLIENT_TOKEN"],"User-Agent":"spacesc-fix-bot/1.0"},
+          )
+          urllib.request.urlopen(req, timeout=15).read()
+          PY
+
+      - name: Check for changes
+        if: steps.target.outputs.have_target == 'true' && (steps.tier.outputs.tier == 'T1' || steps.tier.outputs.tier == 'T2')
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            git diff > /tmp/proposed.diff
+            git diff --name-only > /tmp/files-touched.txt
+          fi
+
+      - name: Open PR
+        if: steps.target.outputs.have_target == 'true' && steps.changes.outputs.has_changes == 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="feedback/$FEEDBACK_ID-$FIX_ID"
+          echo "branch_name=$BRANCH" >> $GITHUB_OUTPUT
+          git checkout -b "$BRANCH"
+          git add -A
+          TIER="${{ steps.tier.outputs.tier }}"
+          RATIONALE=$(cat /tmp/rationale.md 2>/dev/null || echo "(no rationale)")
+          git commit -m "auto-fix: feedback #$FEEDBACK_ID ($TIER)" -m "$RATIONALE"
+          git push origin "$BRANCH"
+          PR_URL=$(gh pr create \
+            --title "auto-fix: feedback #$FEEDBACK_ID ($TIER)" \
+            --body "Automated fix from /feedback. Tier: ${TIER}. ${RATIONALE}" \
+            --base main --head "$BRANCH")
+          PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          # §8.4a.25c option B: NO auto-merge. Both T1 and T2 require explicit
+          # human click in /feedback to fire the merge workflow.
+
+      - name: Callback — proposed
+        if: steps.target.outputs.have_target == 'true' && (steps.tier.outputs.tier == 'T1' || steps.tier.outputs.tier == 'T2')
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          has_changes = "${{ steps.changes.outputs.has_changes }}" == "true"
+          if not has_changes:
+              body = {
+                "fix_id": int(os.environ["FIX_ID"]),
+                "feedback_id": int(os.environ["FEEDBACK_ID"]),
+                "stage": "failed",
+                "error_text": "Agent classified T1/T2 but produced no diff",
+              }
+          else:
+              diff = open("/tmp/proposed.diff").read()[:20000]
+              files = [l for l in open("/tmp/files-touched.txt").read().strip().split("\n") if l]
+              try:
+                  rationale = open("/tmp/rationale.md").read()
+              except Exception:
+                  rationale = ""
+              pr_num_raw = "${{ steps.pr.outputs.pr_number }}"
+              body = {
+                "fix_id": int(os.environ["FIX_ID"]),
+                "feedback_id": int(os.environ["FEEDBACK_ID"]),
+                "stage": "proposed",
+                "proposed_diff": diff,
+                "proposed_rationale": rationale,
+                "files_touched": files,
+                "pr_url": "${{ steps.pr.outputs.pr_url }}",
+                "pr_number": int(pr_num_raw) if pr_num_raw else None,
+                "branch_name": "${{ steps.pr.outputs.branch_name }}",
+                "workflow_run_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+                "workflow_run_id": os.environ['GITHUB_RUN_ID'],
+              }
+          req = urllib.request.Request(
+            os.environ["WORKER_BASE"] + "/api/feedback-fix-callback",
+            data=json.dumps(body).encode(),
+            method="POST",
+            headers={"Content-Type":"application/json","Authorization":"Bearer "+os.environ["MCP_CLIENT_TOKEN"],"User-Agent":"spacesc-fix-bot/1.0"},
+          )
+          urllib.request.urlopen(req, timeout=15).read()
+          PY
+
+  apply:
+    if: inputs.mode == 'apply'
+    runs-on: ubuntu-latest
+    env:
+      WORKER_BASE: "https://spacesc-mcp.75xnd2784n.workers.dev"
+      MCP_CLIENT_TOKEN: ${{ secrets.MCP_CLIENT_TOKEN }}
+      FEEDBACK_ID: ${{ inputs.feedback_id }}
+      FIX_ID: ${{ inputs.fix_id }}
+    steps:
+      - name: Merge PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR="${{ inputs.pr_number }}"
+          if [ -z "$PR" ]; then
+            echo "pr_number required for apply mode"; exit 1
+          fi
+          gh pr merge --squash --auto "$PR" || gh pr merge --squash "$PR"
+
+      - name: Callback — merged
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          body = {
+            "fix_id": int(os.environ["FIX_ID"]),
+            "feedback_id": int(os.environ["FEEDBACK_ID"]),
+            "stage": "merged",
+            "pr_number": int("${{ inputs.pr_number }}"),
+            "ci_state": "success",
+          }
+          req = urllib.request.Request(
+            os.environ["WORKER_BASE"] + "/api/feedback-fix-callback",
+            data=json.dumps(body).encode(),
+            method="POST",
+            headers={"Content-Type":"application/json","Authorization":"Bearer "+os.environ["MCP_CLIENT_TOKEN"],"User-Agent":"spacesc-fix-bot/1.0"},
+          )
+          urllib.request.urlopen(req, timeout=15).read()
+          PY

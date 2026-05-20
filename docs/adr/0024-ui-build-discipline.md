@@ -251,6 +251,38 @@ check whether the current build is repeating any of them.
 | F13 | "Tests pass" treated as user-outcome reach | The audio_r2_key field had been silently dropped from the pipeline-status API response for hours. Smoke tests passed (HTTP 200, audio existed on R2), but Campbell's user-outcome — *"I approved this, can I now play the full episode?"* — was blocked. The agent's audit checked the wrong oracle. | Run the *Purpose oracle* (Part 2d) — open the surface as the persona, walk the charter, ask *did the user finish the thing they came to do?* "No error thrown" is not success. |
 | F14 | Polled positive-signal-only state | Commute Player's post-approve loop polled pipeline-status every 20s for 18 tries (6 min) looking for `audio_r2_key`. On poll error, `catch (_) {}` swallowed the exception; on timeout, polling silently stopped. If the W8.1 audio queue failed, ElevenLabs ran slow, or the bearer token expired mid-commute, the UI stayed on "Approved · audio generating" forever. The sibling pattern was `_partial: true` on 207: the api helper set the flag but no caller read it, so partially-failed `module-feedback` dispatches reported as full success and the user lost half their voice intent silently. | Polling loops surface negative state explicitly. Never `catch (_) {}` inside a poll — auth errors get a reauth prompt, repeated errors get a check-failed surface, timeout gets a "taking longer than usual" surface. For multi-action endpoints (207 partial), the caller must inspect the dispatch result and tell the user which actions did and didn't apply. Name at least three failure modes per polled flow and render a distinct recovery path for each. |
 
+### Part 3.5 — Pre-deploy gate: audit blindspots (§8.4a.25)
+
+Before any deploy or "done" declaration on UI work, run:
+
+```
+list_open_blindspots()  →  MCP tool, status='open'
+```
+
+Each open blindspot was generated automatically when Campbell tapped 🚩 on a
+SpaceSC surface to report something the system should have caught without his
+intervention. The adversarial UAT pass (`analyzeBlindspot`) produced:
+
+- `missed_check` — which existing F-entry was nearby (F13, F14, etc.) or `"new"`
+- `why_text` — one-paragraph diagnosis of the specific failure mode
+- `proposed_new_check` — the verification step that would have caught it
+
+For each open row, the agent MUST:
+
+1. **Run the proposed_new_check** against the current build. If it passes
+   green, the user's reported issue was a one-off (no missing check). If it
+   fails, the check is doing real work — promote it.
+2. **Resolve** the blindspot via `resolve_blindspot(id, "applied", note, "F##")`
+   when the check is now part of the canonical audit, OR via
+   `resolve_blindspot(id, "rejected", note)` with a written argument for why
+   the check would be noise rather than signal.
+3. **Promote applied checks** into Part 3 of this ADR as F15, F16, …
+   each with a name + signature + recovery, same format as F1–F14.
+
+The deploy gate fails if any blindspot in the touched-surface scope remains
+`open`. The user does not have to remember they reported it — the agent reads
+the queue at session start (per `CLAUDE.md`) and works it down.
+
 ### Part 4 — Session debrief (after the work, before declaring closed)
 
 End every UI-touching turn with a short structured debrief. Even one

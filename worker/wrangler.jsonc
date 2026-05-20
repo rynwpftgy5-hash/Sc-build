@@ -53,7 +53,7 @@
 		}
 	],
 	"rules": [
-		{ "type": "Text", "globs": ["**/*.html", "**/*.txt"], "fallthrough": true }
+		{ "type": "Text", "globs": ["**/*.html", "**/*.txt", "**/feedback-button.js"], "fallthrough": true }
 	],
 	"queues": {
 		"producers": [

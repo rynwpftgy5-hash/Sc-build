@@ -497,6 +497,13 @@ const API = {
   flagClaim: (body) => API._post("/api/uc3/module-errata-create", body),
   approve: (mid) => API._post("/api/uc3/module-approve", { module_id: mid }, { timeout: 15000 }),
   retryModuleTts: (mid) => API._post("/api/uc3/module-tts", { module_id: mid, async: true }, { timeout: 15000 }),
+  // §voice-fix-3: regenerate brief audio in the persisted rotation voice.
+  // Brief gen is sync server-side (~30-60s); we kick it off and rely on the
+  // SeriesScreen polling loop to pick up the new brief.voice_id + audio key.
+  // For approved modules, also fire the full-audio queue so the episode
+  // gets re-rendered in the same voice.
+  regenerateModuleAudio: (mid) => API._post("/api/uc3/module-brief", { module_id: mid }, { timeout: 120000 }),
+  regenerateFullAudio: (mid) => API._post("/api/uc3/module-tts", { module_id: mid, async: true }, { timeout: 15000 }),
   reactFeedback: (mid, t) => API._post("/api/uc3/module-feedback", { module_id: mid, voice_transcript: t }, { timeout: 600000 }),
   captureInsight: (body) => API._post("/api/capture", body),
   captureRn: (body) => API._post("/api/rn-capture", body),
@@ -676,6 +683,7 @@ const SPACESC_TOOLS = [
   { id: "posture",  name: "Posture",   desc: "Three-domain balance",            icon: "📊", href: "/posture" },
   { id: "pipeline", name: "Pipeline",  desc: "Ingestion health + errors",       icon: "🩺", href: "/pipeline" },
   { id: "log",      name: "Build Log", desc: "What shipped, what's next",       icon: "📒", href: "/log" },
+  { id: "feedback", name: "Reports",   desc: "Your 🚩 captures + diagnoses",    icon: "🚩", href: "/feedback" },
   { id: "map",      name: "System map", desc: "Five use cases · build tree",    icon: "🗺",  href: "/system-map" },
 ];
 
@@ -1293,11 +1301,32 @@ function LibraryScreen({ refreshKey, onOpenSeries, onPlayArticle, initialSubTab 
 }
 
 // MODULE CARD
-function ModuleCard({ m, totalPositions, onPlayBrief, onPlayModule }) {
+function ModuleCard({ m, totalPositions, onPlayBrief, onPlayModule, onRegenerate, showToast }) {
   const state = moduleUserState(m);
   const briefAvail = !!(m.review_brief && m.review_brief.audio_r2_key);
   const fullAvail = !!m.audio_r2_key;
-  const voiceId = m.review_brief && m.review_brief.voice_id;
+  // §voice-fix-2: prefer module.voice_id (the rotation-assigned voice) over
+  // brief.voice_id (which can be stale on pre-rotation modules where the
+  // brief was generated with the W6 default). Falls back to brief voice_id,
+  // then position-based rotation pick if neither is set.
+  const voiceId = m.voice_id
+    || (m.review_brief && m.review_brief.voice_id)
+    || pickVoiceFor(String(m.position || 0));
+  const briefVoiceId = m.review_brief && m.review_brief.voice_id;
+  // Flag a divergence so the user can see when brief audio was generated in
+  // a different voice than the module's current voice_id. Happens for
+  // pre-rotation modules where the brief is in Antoni but voice_id is now
+  // the rotation pick (e.g. Rachel for pos 2). The Regenerate button below
+  // lets the user resolve the mismatch.
+  const voiceMismatch = briefVoiceId && m.voice_id && briefVoiceId !== m.voice_id;
+  const [regenerating, setRegenerating] = React.useState(false);
+  const handleRegen = async () => {
+    if (!onRegenerate) return;
+    setRegenerating(true);
+    try { await onRegenerate(m.id, voiceId); }
+    catch (e) { showToast && showToast("Regenerate failed: " + e.message); }
+    finally { setRegenerating(false); }
+  };
 
   let stateLine = null, badge = null;
   switch (state) {
@@ -1336,11 +1365,33 @@ function ModuleCard({ m, totalPositions, onPlayBrief, onPlayModule }) {
       <div className="row">
         <div className="row-main">
           <div className="row-title">{m.learning_objective}</div>
-          <div className="row-sub">Episode {m.position} of {totalPositions} · Read by {voiceName(voiceId)}</div>
+          <div className="row-sub">Episode {m.position} of {totalPositions} · Read by {voiceName(voiceId)}{voiceMismatch && <span style={{ color: "var(--accent-warm)", marginLeft: 8 }}> · brief in {voiceName(briefVoiceId)} (regenerate to align)</span>}</div>
         </div>
         {badge}
       </div>
       {stateLine}
+      {/* §voice-fix-4: surface audio_last_error so quota/auth/upstream failures
+          stop being invisible. Without this the user sees an endless
+          "audio coming…" with no signal that the queue retry is failing on
+          every attempt. Pattern-matches the most common errors to plain English. */}
+      {m.audio_last_error && (() => {
+        const err = m.audio_last_error;
+        let humanMsg = err.slice(0, 200);
+        if (/quota_exceeded|exceeds your quota|credits remaining/i.test(err)) {
+          humanMsg = "ElevenLabs TTS quota exhausted. Top up the plan at elevenlabs.io to resume audio generation.";
+        } else if (/401|unauthorized|invalid_api_key/i.test(err)) {
+          humanMsg = "ElevenLabs auth failed. The API key may need rotation.";
+        }
+        return (
+          <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(255,180,100,0.08)", borderLeft: "3px solid var(--accent-warm)", borderRadius: 4, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.4 }}>
+            <strong style={{ color: "var(--accent-warm)" }}>⚠ Audio generation failed</strong>
+            <div style={{ marginTop: 4 }}>{humanMsg}</div>
+            {m.audio_attempts_count > 1 && (
+              <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>{m.audio_attempts_count} attempts · last {timeAgo(m.audio_last_attempt_at)}</div>
+            )}
+          </div>
+        );
+      })()}
       <div className="module-actions">
         {briefAvail ? (
           <button className="play-btn-secondary" onClick={onPlayBrief}>▶ Brief · ~5m</button>
@@ -1356,13 +1407,21 @@ function ModuleCard({ m, totalPositions, onPlayBrief, onPlayModule }) {
         ) : (
           <button className="play-btn" disabled>—</button>
         )}
+        {/* §voice-fix-3: per-module regenerate-in-voice. Async via queue so it
+            doesn't block; user can keep working. Shows the target voice so the
+            action is honest about what'll change. */}
+        {(briefAvail || fullAvail) && onRegenerate && (
+          <button className="play-btn-secondary" onClick={handleRegen} disabled={regenerating} title="Regenerate the full episode audio in the current rotation voice">
+            {regenerating ? "Queuing…" : `🔄 Regenerate in ${voiceName(voiceId)}`}
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
 // SERIES DETAIL
-function SeriesScreen({ gapId, gapTitle, refreshKey, onPlayBrief, onPlayModule }) {
+function SeriesScreen({ gapId, gapTitle, refreshKey, onPlayBrief, onPlayModule, onRegenerate, showToast }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -1444,8 +1503,10 @@ function SeriesScreen({ gapId, gapTitle, refreshKey, onPlayBrief, onPlayModule }
       {mods.map((m) => (
         <ModuleCard
           key={m.id} m={m} totalPositions={total}
-          onPlayBrief={() => onPlayBrief(m.id, truncate(m.learning_objective, 80), m.review_brief && m.review_brief.voice_id, m.position, total)}
-          onPlayModule={() => onPlayModule(m.id, truncate(m.learning_objective, 80), m.review_brief && m.review_brief.voice_id, m.position, total)}
+          onPlayBrief={() => onPlayBrief(m.id, truncate(m.learning_objective, 80), m.voice_id || (m.review_brief && m.review_brief.voice_id), m.position, total)}
+          onPlayModule={() => onPlayModule(m.id, truncate(m.learning_objective, 80), m.voice_id || (m.review_brief && m.review_brief.voice_id), m.position, total)}
+          onRegenerate={onRegenerate}
+          showToast={showToast}
         />
       ))}
     </div>
@@ -2639,7 +2700,34 @@ function App() {
       onPlayModule={(modId, title, voiceId, pos, total) => playAudio({
         kind: "module", moduleId: modId, audioUrl: API.moduleAudioUrl(modId),
         title, series: view.gapTitle, voiceId, gapId: view.gapId, position: pos, totalPositions: total,
-      })} />;
+      })}
+      showToast={showToast}
+      onRegenerate={async (modId, voiceId) => {
+        // §voice-fix-3: regenerate-in-voice handler. Brief regen is sync
+        // (~30-60s); we fire-and-forget on the UI and rely on the series
+        // polling loop to surface the new audio. For approved modules,
+        // also queue the full-audio regen so the episode aligns to voice.
+        showToast(`Regenerating in ${voiceName(voiceId)}… ~1 min`);
+        // Don't await — let it run in the background. The polling loop in
+        // SeriesScreen catches the result. If the call fails (e.g. quota),
+        // the audio_last_error will surface in the card on next poll.
+        API.regenerateModuleAudio(modId).then(
+          () => { showToast("Brief regenerated"); bumpRefresh(); },
+          (e) => {
+            const msg = (e && e.message) || "regenerate failed";
+            if (/quota_exceeded|quota of \d+/i.test(msg)) {
+              showToast("⚠ TTS quota exhausted — see error in episode card");
+            } else if (/timeout/i.test(msg)) {
+              showToast("Still working — refresh in a minute");
+            } else {
+              showToast("Regenerate failed: " + msg.slice(0, 80));
+            }
+            bumpRefresh();
+          },
+        );
+        // Also queue the full-audio regen (no-op if module isn't approved yet).
+        API.regenerateFullAudio(modId).catch(() => {});
+      }} />;
   } else if (view.name === "settings") {
     viewEl = <SettingsScreen
       onClearToken={() => { API.clearToken(); setAuthed(false); }}

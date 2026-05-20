@@ -13,5 +13,5 @@ export interface S5DraftMessage {
 // mid-execution on multi-minute TTS work.
 export interface ModuleTtsMessage {
 	module_id: number;
-	source: "approve" | "manual";
+	source: "approve" | "manual" | "manual-retry";
 }

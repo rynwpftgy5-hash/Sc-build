@@ -39,6 +39,27 @@ import BUILDLOG_V3_LEGACY_HTML from "./assets/buildlog-v3-legacy.html";
 // ADR-024: live system map (use case build tree) — canonical reference for every Claude session
 // @ts-expect-error — Wrangler Text rule
 import SYSTEM_MAP_HTML from "./assets/system-map.html";
+// §8.4a.25b: Reports — your 🚩 captures + what the system did with each one
+// @ts-expect-error — Wrangler Text rule
+import FEEDBACK_HTML from "./assets/feedback.html";
+// §8.4a.25 — universal feedback button asset (vanilla JS, framework-agnostic)
+// @ts-expect-error — Wrangler Text rule
+import FEEDBACK_BUTTON_JS from "./assets/feedback-button.js";
+import {
+	handleFeedbackCapture,
+	handleFeedbackList,
+	handleFeedbackResolve,
+	handleBlindspotsList,
+	handleBlindspotReanalyze,
+	handleBlindspotResolve,
+	handleFeedbackProposeFix,
+	handleFeedbackApply,
+	handleFeedbackFixStatus,
+	handleFeedbackFixCallback,
+	handleFeedbackFixesPending,
+} from "./handlers/feedback";
+import { listFeedback } from "./lib/feedback";
+import { listBlindspots, resolveBlindspot } from "./lib/blindspot-analyzer";
 import {
 	handleUc3PipelineRun,
 	handleUc3PipelineCancel,
@@ -2411,6 +2432,79 @@ export class SpaceSCMCP extends McpAgent<Env> {
 			},
 			async (input) => mcpResponse(await handleSearchModules(input, this.env)),
 		);
+
+		// §8.4a.25 — search_feedback: Campbell's 🚩 capture inbox.
+		// CRITICAL: call this at session start (per CLAUDE.md). Surface any
+		// status='open' items as the first thing to address.
+		this.server.registerTool(
+			"search_feedback",
+			{
+				description:
+					"Search Campbell's UI feedback inbox (the 🚩 button on every SpaceSC surface). Returns items captured from /uc3, /desk, /reading, /corpus, /insights, /posture, /pipeline, /log, /system-map. Each item includes the surface, view state at capture, type (bug | confusion | feature | question), notes, and status. **Call this at session start** to see what needs addressing without Campbell having to remember and re-explain. Filter by status (open | in_progress | resolved | wontfix), surface, or type.",
+				inputSchema: {
+					status: z.enum(["open", "in_progress", "resolved", "wontfix"]).optional(),
+					surface: z.string().optional(),
+					type: z.enum(["bug", "confusion", "feature", "question"]).optional(),
+					limit: z.number().int().min(1).max(200).optional().default(50),
+				},
+			},
+			async (input) => {
+				try {
+					const items = await listFeedback(this.env.UC3_DB, input);
+					return mcpResponse({ ok: true, count: items.length, items });
+				} catch (err) {
+					return mcpResponse({ ok: false, error: (err as Error).message });
+				}
+			},
+		);
+
+		// §8.4a.25 — list_open_blindspots: the adversarial UAT register.
+		// Each open blindspot is a check we should have run but didn't —
+		// the pre-deploy gate reads this list and resolves them as 'applied'
+		// or 'rejected'.
+		this.server.registerTool(
+			"list_open_blindspots",
+			{
+				description:
+					"List adversarial-UAT audit blindspots — entries that name a check our ADR-024 self-audit missed, generated automatically when Campbell taps 🚩. Each row has: missed_check (which F-entry was nearby), why_text (one-paragraph diagnosis), proposed_new_check (the verification step to add). **Call this at session start.** Status 'open' items must be resolved before deploy: either prove the proposed check would have caught the reported issue (resolve as 'applied' + promote to ADR-024 F#) or argue why it would be noise (resolve as 'rejected' + write the rationale).",
+				inputSchema: {
+					status: z.enum(["open", "applied", "rejected"]).optional().default("open"),
+					pattern_category: z.string().optional(),
+					limit: z.number().int().min(1).max(200).optional().default(50),
+				},
+			},
+			async (input) => {
+				try {
+					const items = await listBlindspots(this.env.UC3_DB, input);
+					return mcpResponse({ ok: true, count: items.length, items });
+				} catch (err) {
+					return mcpResponse({ ok: false, error: (err as Error).message });
+				}
+			},
+		);
+
+		// §8.4a.25 — resolve_blindspot: close the loop.
+		this.server.registerTool(
+			"resolve_blindspot",
+			{
+				description:
+					"Resolve an audit blindspot — either promote the proposed_new_check into ADR-024 as a new F-entry (status='applied', supply applied_to_adr like 'F15'), or reject it with rationale (status='rejected'). The resolution_note is mandatory and explains the decision. Use after running the proposed_new_check yourself to verify it would have caught the reported issue.",
+				inputSchema: {
+					id: z.number().int().min(1),
+					status: z.enum(["applied", "rejected"]),
+					resolution_note: z.string().min(1),
+					applied_to_adr: z.string().optional(),
+				},
+			},
+			async (input) => {
+				try {
+					const r = await resolveBlindspot(this.env.UC3_DB, input.id, input.status, input.resolution_note, input.applied_to_adr);
+					return mcpResponse(r);
+				} catch (err) {
+					return mcpResponse({ ok: false, error: (err as Error).message });
+				}
+			},
+		);
 	}
 }
 
@@ -2662,9 +2756,40 @@ export default {
 			return html.slice(0, idx) + NAV_INJECTION + html.slice(idx);
 		}
 
-		// UC3 Commute Player (v5.2 hand-coded) — has its own React NavMenu, no injection
+		// §8.4a.25 — universal feedback button. Injected on EVERY surface
+		// (hand-coded React + v3-legacy bundles alike) so there is no surface
+		// where the user can't capture. The asset is served at /feedback-button.js
+		// (handled below) and the script tag is deferred so it doesn't block
+		// initial paint. Defensive guard: only inject if the HTML doesn't
+		// already reference it (e.g. if a surface explicitly embeds it).
+		const FEEDBACK_INJECTION = `
+<!-- §8.4a.25 universal feedback button — see worker/src/assets/feedback-button.js -->
+<script src="/feedback-button.js" defer></script>
+`;
+		function injectFeedback(html: string): string {
+			if (html.includes("/feedback-button.js")) return html;
+			const idx = html.lastIndexOf("</body>");
+			if (idx < 0) return html + FEEDBACK_INJECTION;
+			return html.slice(0, idx) + FEEDBACK_INJECTION + html.slice(idx);
+		}
+
+		// Serve the feedback button asset itself. Public (no auth) so the
+		// surfaces can <script src> it without credentials.
+		if (url.pathname === "/feedback-button.js" && request.method === "GET") {
+			return new Response(FEEDBACK_BUTTON_JS as string, {
+				status: 200,
+				headers: {
+					"Content-Type": "application/javascript; charset=utf-8",
+					"Cache-Control": "public, max-age=300",
+					...CORS_HEADERS,
+				},
+			});
+		}
+
+		// UC3 Commute Player (v5.2 hand-coded) — has its own React NavMenu, no nav injection.
+		// §8.4a.25: feedback button is injected universally on every surface including this one.
 		if (url.pathname === "/uc3" || url.pathname === "/uc3/") {
-			return new Response(COMMUTE_PLAYER_HTML, {
+			return new Response(injectFeedback(COMMUTE_PLAYER_HTML), {
 				status: 200,
 				headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=60" },
 			});
@@ -2692,6 +2817,7 @@ export default {
 			"/log": BUILDLOG_HTML, "/log/": BUILDLOG_HTML,
 			"/log-v3-legacy": BUILDLOG_V3_LEGACY_HTML, "/log-v3-legacy/": BUILDLOG_V3_LEGACY_HTML,
 			"/system-map": SYSTEM_MAP_HTML, "/system-map/": SYSTEM_MAP_HTML,
+			"/feedback": FEEDBACK_HTML, "/feedback/": FEEDBACK_HTML,
 		};
 		// Hand-coded surfaces already embed their own React NavMenu — skipping
 		// injectNav() prevents the double-pill stacking the reviewer caught on
@@ -2707,12 +2833,15 @@ export default {
 			"/pipeline", "/pipeline/",
 			"/log", "/log/",
 			"/system-map", "/system-map/",
+			"/feedback", "/feedback/",
 		]);
 		const surfaceHtml = surfaceMap[url.pathname];
 		if (surfaceHtml) {
-			const body = HAND_CODED_NO_INJECT.has(url.pathname)
+			const navInjected = HAND_CODED_NO_INJECT.has(url.pathname)
 				? surfaceHtml
 				: injectNav(surfaceHtml);
+			// §8.4a.25 — feedback button on EVERY surface, hand-coded or v3-legacy alike.
+			const body = injectFeedback(navInjected);
 			return new Response(body, {
 				status: 200,
 				headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=60" },
@@ -2825,6 +2954,7 @@ export default {
 				return jsonResponse(result.ok === false ? (result.status || 502) : 200, result);
 			}
 			if (url.pathname === "/api/uc3/daily-briefing-generate" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { async?: boolean };
 				const result = (await handleUc3DailyBriefingGenerate(body || {}, env, ctx)) as { ok: boolean; status?: number };
 				return jsonResponse(result.ok === false ? (result.status || 502) : (result.status || 200), result);
 			}
@@ -2839,6 +2969,69 @@ export default {
 			}
 			// brief-audio + module-audio handled above (public streams, no auth)
 			return jsonResponse(405, { ok: false, error: "method not allowed for this /api/uc3/* route" });
+		}
+
+		// §8.4a.25 — universal feedback button + adversarial UAT loop routes
+		if (url.pathname.startsWith("/api/feedback-") || url.pathname.startsWith("/api/blindspot")) {
+			if (!env.MCP_CLIENT_TOKEN) {
+				return jsonResponse(500, { ok: false, error: "server misconfigured: MCP_CLIENT_TOKEN missing" });
+			}
+			if (!authOk(request, env.MCP_CLIENT_TOKEN)) {
+				return jsonResponse(401, { ok: false, error: "unauthorized" });
+			}
+			if (url.pathname === "/api/feedback-capture" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as Parameters<typeof handleFeedbackCapture>[0];
+				const result = await handleFeedbackCapture(body, env, ctx);
+				return jsonResponse(result.ok ? (result.status || 200) : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/feedback-list" && request.method === "GET") {
+				const result = await handleFeedbackList(url, env);
+				return jsonResponse(result.ok ? (result.status || 200) : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/feedback-resolve" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { id?: number; status?: string; resolution_note?: string };
+				const result = await handleFeedbackResolve(body, env);
+				return jsonResponse(result.ok ? (result.status || 200) : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/blindspots-list" && request.method === "GET") {
+				const result = await handleBlindspotsList(url, env);
+				return jsonResponse(result.ok ? (result.status || 200) : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/blindspot-reanalyze" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { feedback_id?: number };
+				const result = await handleBlindspotReanalyze(body, env);
+				return jsonResponse(result.ok ? (result.status || 200) : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/blindspot-resolve" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { id?: number; status?: string; resolution_note?: string; applied_to_adr?: string };
+				const result = await handleBlindspotResolve(body, env);
+				return jsonResponse(result.ok ? (result.status || 200) : (result.status || 502), result);
+			}
+			// §8.4a.25c — auto-fix loop
+			if (url.pathname === "/api/feedback-propose-fix" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { feedback_id?: number };
+				const result = await handleFeedbackProposeFix(body, env);
+				return jsonResponse(result.ok ? (result.status || 200) : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/feedback-apply" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { feedback_id?: number };
+				const result = await handleFeedbackApply(body, env);
+				return jsonResponse(result.ok ? (result.status || 200) : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/feedback-fix-status" && request.method === "GET") {
+				const result = await handleFeedbackFixStatus(url, env);
+				return jsonResponse(result.ok ? (result.status || 200) : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/feedback-fixes-pending" && request.method === "GET") {
+				const result = await handleFeedbackFixesPending(url, env);
+				return jsonResponse(result.ok ? (result.status || 200) : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/feedback-fix-callback" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as Parameters<typeof handleFeedbackFixCallback>[0];
+				const result = await handleFeedbackFixCallback(body, env);
+				return jsonResponse(result.ok ? (result.status || 200) : (result.status || 502), result);
+			}
+			return jsonResponse(405, { ok: false, error: "method not allowed for this /api/feedback-* or /api/blindspot-* route" });
 		}
 
 		// /api/* routes for Live Artifacts (bearer-auth + CORS)
