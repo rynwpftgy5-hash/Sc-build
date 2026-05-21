@@ -234,7 +234,7 @@ function LoginPage({ onSaved }) {
   );
 }
 
-function PostureView({ refreshKey, onAuthLost }) {
+function PostureView({ refreshKey, onAuthLost, onRetry }) {
   const [windowKey, setWindowKey] = useState("30d");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -309,7 +309,12 @@ function PostureView({ refreshKey, onAuthLost }) {
       )}
 
       {loading ? <div className="empty"><div className="spinner"></div></div>
-       : error ? <div className="empty">⚠ {error}</div>
+       : error ? (
+         <div className="empty">
+           <div>⚠ {error}</div>
+           {onRetry && <button className="filter-chip active" onClick={onRetry} style={{ marginTop: 12 }}>Try again</button>}
+         </div>
+       )
        : (
          <>
            <div className="kpi-grid">
@@ -393,7 +398,7 @@ function App() {
         ) : (
           <div className="topbar"><div className="topbar-title">Posture</div><div className="topbar-sub">three-domain balance · phase 1</div><button className="topbar-gear" onClick={() => setRefreshKey((k) => k + 1)} aria-label="Refresh">↻</button><button className="topbar-gear" onClick={() => setView("settings")} aria-label="Settings">⚙</button></div>
         )}
-        {view === "posture" && <PostureView refreshKey={refreshKey} onAuthLost={onAuthLost} />}
+        {view === "posture" && <PostureView refreshKey={refreshKey} onAuthLost={onAuthLost} onRetry={() => setRefreshKey((k) => k + 1)} />}
         {view === "settings" && <SettingsView onClearToken={onAuthLost} showToast={showToast} />}
       </div>
       {toast && <div className="toast" role="status" aria-live="polite">{toast.msg}</div>}
