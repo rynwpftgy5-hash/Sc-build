@@ -416,7 +416,12 @@ function TodayScreen({ refreshKey, onTriage, onOpenReading, onRetry }) {
     return () => { cancelled = true; };
   }, [refreshKey]);
 
-  if (loading) return <div className="empty"><div className="spinner"></div></div>;
+  // Only show the full-page spinner on the genuine cold load. On a refreshKey-driven
+  // re-fetch (e.g. after triaging an article to Ingest) we keep the existing rows
+  // mounted so the browser preserves scroll position — see ADR-024 F12: an in-page
+  // action that yields HTTP 200 still fails the user if it scrolls the page to the top.
+  const hasAnyData = overnight.length > 0 || queuedForDrive.length > 0 || flaggedToday.length > 0;
+  if (loading && !hasAnyData) return <div className="empty"><div className="spinner"></div></div>;
   if (error) return (
     <div className="empty">
       <div className="empty-icon">⚠</div>
@@ -532,7 +537,10 @@ function InboxScreen({ refreshKey, onTriage, onOpenReading, onRetry }) {
           <button key={s.key} className={"filter-chip" + (activeFilter === s.key ? " active" : "")} onClick={() => setActiveFilter(s.key)}>{s.label}</button>
         ))}
       </div>
-      {loading ? <div className="empty"><div className="spinner"></div></div>
+      {/* Spinner only when we genuinely have nothing to show. On a refreshKey-driven
+          re-fetch (after triage), the prior rows stay mounted so scroll position
+          survives — see ADR-024 F12. */}
+      {loading && items.length === 0 ? <div className="empty"><div className="spinner"></div></div>
        : error ? <div className="empty">⚠ {error}<div style={{ marginTop: 12 }}><button className="play-btn-secondary" onClick={onRetry}>↻ Retry</button></div></div>
        : items.length === 0 ? (
          <div className="empty">
