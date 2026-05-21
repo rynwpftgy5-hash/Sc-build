@@ -433,10 +433,14 @@ interface SearchInsightsInput {
 }
 
 async function handleSearchInsights(input: SearchInsightsInput, env: Env) {
+	// il-server /search rejects limit > 50 with HTTP 422 (matches the MCP
+	// search_insights zod max). Clamp here so /api/search HTTP callers
+	// can't trip the validation path and surface it as a 502 wrapper.
+	const limit = Math.max(1, Math.min(50, input.limit ?? 10));
 	const params = new URLSearchParams({
 		q: input.query,
 		include_pending: String(input.include_pending ?? false),
-		limit: String(input.limit ?? 10),
+		limit: String(limit),
 	});
 	if (input.domain) params.set("domain", input.domain);
 	try {
