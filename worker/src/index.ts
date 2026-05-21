@@ -127,6 +127,12 @@ declare global {
 		// the slow generateModuleAudio path; each message gets its own fresh
 		// Worker invocation with full subrequest + wall-time budget).
 		MODULE_TTS_QUEUE: Queue<ModuleTtsMessage>;
+		// §8.4a.25c — Worker GitHub auth for reliable Cloudflare-cron drain.
+		GITHUB_TOKEN?: string;
+		GITHUB_OWNER?: string;
+		GITHUB_REPO?: string;
+		// §8.4a.25 — optional Notion mirror for ui_feedback (best-effort).
+		FEEDBACK_DB_ID?: string;
 	}
 }
 
@@ -3062,20 +3068,82 @@ export default {
 			console.error(`queue dispatcher: unknown queue ${batch.queue}`);
 		}
 	},
-	// Item 2: daily-briefing cron. Triggered by wrangler.jsonc triggers.crons.
-	// generateDailyBriefing is idempotent on briefing_date — if today's row is
-	// already 'ready' it returns the existing keys without rerunning the LLM.
-	async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-		ctx.waitUntil(
-			generateDailyBriefing(env).then((r) => {
-				if (r.ok) {
-					console.log(`daily-briefing ${r.briefing_date} ready (${r.audio_bytes} bytes, ${r.source_summary?.ingest_count ?? 0} ingests, ${r.source_summary?.insight_count ?? 0} insights)`);
-				} else {
-					console.error(`daily-briefing ${r.briefing_date} FAILED: ${r.error}`);
-				}
-			}).catch((err) => {
-				console.error("daily-briefing cron unexpected:", (err as Error).message);
-			}),
-		);
+	// Cron dispatcher (§8.4a.25c). Routes by cron expression:
+	//   - "0 11 * * *"  → daily briefing
+	//   - "*/2 * * * *" → feedback-fix queue drain (Cloudflare-side, reliable)
+	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+		if (event.cron === "0 11 * * *") {
+			ctx.waitUntil(
+				generateDailyBriefing(env).then((r) => {
+					if (r.ok) {
+						console.log(`daily-briefing ${r.briefing_date} ready (${r.audio_bytes} bytes, ${r.source_summary?.ingest_count ?? 0} ingests, ${r.source_summary?.insight_count ?? 0} insights)`);
+					} else {
+						console.error(`daily-briefing ${r.briefing_date} FAILED: ${r.error}`);
+					}
+				}).catch((err) => {
+					console.error("daily-briefing cron unexpected:", (err as Error).message);
+				}),
+			);
+		} else if (event.cron === "*/2 * * * *") {
+			ctx.waitUntil(drainFeedbackFixQueue(env));
+		} else {
+			console.warn(`scheduled: unknown cron expression "${event.cron}"`);
+		}
 	},
 };
+
+// §8.4a.25c — feedback-fix queue drain. Cloudflare cron fires this every 2 min,
+// reliably (GitHub free-tier schedule trigger doesn't fire reliably).
+async function drainFeedbackFixQueue(env: Env): Promise<void> {
+	if (!env.GITHUB_TOKEN) {
+		console.warn("drainFeedbackFixQueue: GITHUB_TOKEN missing; skipping");
+		return;
+	}
+	const owner = env.GITHUB_OWNER || "rynwpftgy5-hash";
+	const repo = env.GITHUB_REPO || "Sc-build";
+	const row = await env.UC3_DB
+		.prepare(
+			`SELECT id, feedback_id, status, pr_number FROM feedback_fixes
+			 WHERE status IN ('pending','apply-requested')
+			 ORDER BY created_at ASC LIMIT 1`,
+		)
+		.first<{ id: number; feedback_id: number; status: string; pr_number: number | null }>();
+	if (!row) {
+		console.log("drain: queue empty");
+		return;
+	}
+	const mode = row.status === "apply-requested" ? "apply" : "propose";
+	const inputs: Record<string, string> = {
+		feedback_id: String(row.feedback_id),
+		fix_id: String(row.id),
+		mode,
+	};
+	if (mode === "apply" && row.pr_number != null) {
+		inputs.pr_number = String(row.pr_number);
+	}
+	const resp = await fetch(
+		`https://api.github.com/repos/${owner}/${repo}/actions/workflows/feedback-fix.yml/dispatches`,
+		{
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+				Accept: "application/vnd.github+json",
+				"X-GitHub-Api-Version": "2022-11-28",
+				"User-Agent": "spacesc-cron-drain/1.0",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ ref: "main", inputs }),
+		},
+	);
+	if (resp.ok) {
+		const nextStatus = mode === "apply" ? "applying" : "proposing";
+		await env.UC3_DB
+			.prepare(`UPDATE feedback_fixes SET status = ? WHERE id = ?`)
+			.bind(nextStatus, row.id)
+			.run();
+		console.log(`drain: dispatched ${mode} for feedback ${row.feedback_id} (fix ${row.id})`);
+	} else {
+		const txt = (await resp.text()).slice(0, 300);
+		console.error(`drain: dispatch failed ${resp.status}: ${txt}`);
+	}
+}
