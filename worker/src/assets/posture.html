@@ -139,8 +139,10 @@ const API = {
     }
   },
   // Reuse /api/search to pull insights (include_pending=true returns both
-  // pending + approved). Larger limit so we have enough rows to bucket.
-  searchInsights: (q, includePending, limit) => API._post("/api/search", { query: q || " ", include_pending: !!includePending, limit: limit || 200 }, { timeout: 25000 }),
+  // pending + approved). il-server caps limit at 50 (mirrors the MCP
+  // search_insights zod max) — asking for more returns 422, which the
+  // worker surfaces as 502 on /posture. Stay at the upstream contract.
+  searchInsights: (q, includePending, limit) => API._post("/api/search", { query: q || " ", include_pending: !!includePending, limit: limit || 50 }, { timeout: 25000 }),
 };
 
 const DOMAIN_OPTIONS = ["Policy", "Economics", "Technology", "Cross-cutting"];
@@ -244,7 +246,7 @@ function PostureView({ refreshKey, onAuthLost }) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError(null); setMacOffline(false);
-    API.searchInsights(" ", true, 200)
+    API.searchInsights(" ", true, 50)
       .then((r) => {
         if (cancelled) return;
         const all = r.results || r.insights || r.items || [];
