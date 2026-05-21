@@ -362,6 +362,13 @@ jobs:
       FEEDBACK_ID: ${{ inputs.feedback_id }}
       FIX_ID: ${{ inputs.fix_id }}
     steps:
+      # §8.4a.25c bugfix — gh pr merge needs a git working dir. Run 26205642313
+      # failed with "fatal: not a git repository". Add checkout before merge.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Merge PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
