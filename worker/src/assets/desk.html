@@ -361,7 +361,7 @@ function ItemRow({ a, onTriage, onOpenReading, showActions }) {
       {showActions !== false && (
         <div className="actions">
           {a.article_url && (
-            <a className="action-pill" href={a.article_url} target="_blank" rel="noreferrer">↗ Source</a>
+            <a className="action-pill" href={a.article_url} target="_blank" rel="noopener noreferrer">↗ Source</a>
           )}
           <button className="action-pill primary" onClick={() => onOpenReading(a)}>📖 Read</button>
           {a.status !== "Retrieved" && (
@@ -579,7 +579,7 @@ function CapturesScreen({ refreshKey, onRetry }) {
           </div>
           <span className="capture-link-arrow">→</span>
         </a>
-        <a className="capture-link" href={NOTION_LINKS.oq} target="_blank" rel="noreferrer">
+        <a className="capture-link" href={NOTION_LINKS.oq} target="_blank" rel="noopener noreferrer">
           <span className="capture-link-icon">❓</span>
           <div className="capture-link-text">
             <div className="capture-link-name">Open questions</div>
@@ -587,7 +587,7 @@ function CapturesScreen({ refreshKey, onRetry }) {
           </div>
           <span className="capture-link-arrow">↗</span>
         </a>
-        <a className="capture-link" href={NOTION_LINKS.gaps} target="_blank" rel="noreferrer">
+        <a className="capture-link" href={NOTION_LINKS.gaps} target="_blank" rel="noopener noreferrer">
           <span className="capture-link-icon">🎓</span>
           <div className="capture-link-text">
             <div className="capture-link-name">Things to learn</div>
