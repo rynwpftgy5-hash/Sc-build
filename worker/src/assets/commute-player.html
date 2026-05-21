@@ -2072,6 +2072,28 @@ function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRef
   const skip = (d) => { const a = audioRef.current; if (!a) return; a.currentTime = Math.max(0, Math.min(a.duration || 0, a.currentTime + d)); };
   const seekTo = (f) => { const a = audioRef.current; if (!a || !a.duration) return; a.currentTime = f * a.duration; };
 
+  // §8.4a.25 F6 dead-end fix — outbound content action. Brief/module audio
+  // is served by public endpoints, so the URL works on a recipient's phone
+  // or work laptop without an auth token. Articles use a client-side blob
+  // URL, so we fall through to a direct download instead.
+  const shareAudio = async () => {
+    let shareUrl = null;
+    if (playing.kind === "brief" && playing.moduleId) shareUrl = API.briefAudioUrl(playing.moduleId);
+    else if ((playing.kind === "module" || playing.kind === "module-due") && playing.moduleId) shareUrl = API.moduleAudioUrl(playing.moduleId);
+    if (shareUrl) {
+      try { if (navigator.share) { await navigator.share({ title: playing.title || "SpaceSC episode", url: shareUrl }); return; } } catch (_) {}
+      try { await navigator.clipboard.writeText(shareUrl); showToast && showToast("Link copied · paste into email"); return; }
+      catch (_) { showToast && showToast(shareUrl); return; }
+    }
+    if (playing.audioUrl) {
+      const safe = (playing.title || "spacesc-audio").replace(/[^a-z0-9-]+/gi, "-").toLowerCase().slice(0, 60) || "spacesc-audio";
+      const a = document.createElement("a");
+      a.href = playing.audioUrl; a.download = safe + ".mp3";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      showToast && showToast("Downloading audio…");
+    }
+  };
+
   // Keyboard shortcuts (D7): Space toggles play/pause, ←/→ skip 15s,
   // Escape closes the topmost open surface (sheet first, then overlay).
   // Ignored when a text input is focused so typing in a capture sheet works.
@@ -2327,6 +2349,9 @@ function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRef
           </button>
           <button className="action-btn" onClick={() => setFlagOpen(true)}>
             <div className="action-btn-icon">🚩</div><div>Flag</div>
+          </button>
+          <button className="action-btn" onClick={shareAudio} aria-label="Share or download audio">
+            <div className="action-btn-icon">📤</div><div>Share</div>
           </button>
         </div>
       </div>
