@@ -39,6 +39,15 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .summary-card.wontfix .summary-num { color: var(--ink-mute); }
 .summary-card.blindspots .summary-num { color: var(--purple); }
 
+/* Status legend — canonical definitions for every status pill rendered on this page. */
+.status-legend { margin: 0 0 14px; background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius); padding: 0; }
+.status-legend > summary { list-style: none; cursor: pointer; padding: 10px 14px; font-size: 12px; color: var(--ink-soft); font-weight: 500; }
+.status-legend > summary::-webkit-details-marker { display: none; }
+.status-legend > summary::after { content: "▾"; float: right; color: var(--ink-mute); font-size: 10px; transition: transform .15s; }
+.status-legend[open] > summary::after { transform: rotate(180deg); }
+.status-legend-body { padding: 4px 14px 12px; display: grid; gap: 8px; }
+.status-legend-row { display: grid; grid-template-columns: 92px 1fr; gap: 10px; align-items: start; font-size: 12px; line-height: 1.45; color: var(--ink-soft); }
+
 .filter-row { display: flex; gap: 6px; padding: 4px 0 14px; flex-wrap: wrap; }
 .filter-chip { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; color: var(--ink-soft); background: var(--bg-sunken); border: 0.5px solid var(--line); white-space: nowrap; cursor: pointer; }
 .filter-chip.active { background: var(--ink); color: var(--bg-elev); border-color: var(--ink); }
@@ -231,6 +240,17 @@ const TYPE_META = {
   question:  { icon: "❓", label: "Question" },
 };
 
+// Canonical definitions for the four report statuses. Every status pill on this
+// page resolves its label and tooltip through this map so the taxonomy stays in
+// one place. Boundary conditions are explicit because "in progress" is easy to
+// read as covering things the system has merely queued — it does not.
+const STATUS_DEFS = {
+  open:        { label: "Open",        blurb: "Filed and waiting. Auto-fix has not been dispatched and you have not marked it in-progress yet." },
+  in_progress: { label: "In progress", blurb: "You marked it in-progress (or Claude opened it in a session). Auto-fix queue stages — Queued, Analyzing, CI, Merging — show separately in the Auto-fix panel and do not flip this badge on their own." },
+  resolved:    { label: "Resolved",    blurb: "Closed with a resolution note. If an auto-fix PR merged, that lands in the Auto-fix panel as well." },
+  wontfix:     { label: "Won't fix",   blurb: "Explicitly skipped with a rationale. Not the same as ignored." },
+};
+
 function timeAgo(unix) {
   if (!unix) return "—";
   const diff = (Date.now() / 1000) - unix;
@@ -298,7 +318,26 @@ function LoginPage({ onTokenSet, showToast }) {
 }
 
 function StatusBadge({ status }) {
-  return <span className={"fb-row-status " + status}>{status.replace("_", " ")}</span>;
+  const def = STATUS_DEFS[status];
+  const label = (def && def.label) || status.replace("_", " ");
+  const title = def ? def.label + " — " + def.blurb : status;
+  return <span className={"fb-row-status " + status} title={title}>{label}</span>;
+}
+
+function StatusLegend() {
+  return (
+    <details className="status-legend">
+      <summary>What do these statuses mean?</summary>
+      <div className="status-legend-body">
+        {Object.entries(STATUS_DEFS).map(([k, d]) => (
+          <div key={k} className="status-legend-row">
+            <span><StatusBadge status={k} /></span>
+            <span>{d.blurb}</span>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
 }
 
 function FeedbackRow({ item, active, onClick }) {
@@ -886,6 +925,8 @@ function App() {
           <div className="summary-card resolved"><div className="summary-num">{summary.resolved || 0}</div><div className="summary-lbl">Resolved</div></div>
           <div className="summary-card blindspots"><div className="summary-num">{summary.blindspots_open || 0}</div><div className="summary-lbl">Patterns to address</div></div>
         </div>
+
+        <StatusLegend />
 
         <div className="filter-row">
           <button className={"filter-chip" + (view === "list" ? " active" : "")} onClick={() => setView("list")}>All reports</button>
