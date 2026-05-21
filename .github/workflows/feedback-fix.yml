@@ -379,10 +379,42 @@ jobs:
           fi
           gh pr merge --squash --auto "$PR" || gh pr merge --squash "$PR"
 
+      # §8.4a.25c F15 — merge ≠ live. After merge, redeploy the Worker so the
+      # change is actually on the surface the user sees. Without this step the
+      # /feedback page says "Shipped" but the live Worker is still serving the
+      # pre-merge bundle. Caught when Campbell looked for the Share button on
+      # 2026-05-21 and it wasn't there even though PR #15 was merged.
+      - name: Pull main + redeploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The merge happened on a PR head; we need to pull the now-updated
+          # main and deploy from it. Wait briefly for GitHub to update default
+          # branch state.
+          sleep 10
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "WARN: CLOUDFLARE_API_TOKEN not set on this repo — skipping deploy"
+            echo "POST_DEPLOY_OK=skipped" >> $GITHUB_ENV
+          else
+            echo "Installing deps + deploying..."
+            npm ci --no-audit --no-fund > /tmp/install.log 2>&1 || { echo "npm ci failed"; cat /tmp/install.log | tail; exit 1; }
+            if npx wrangler deploy --config worker/wrangler.jsonc 2>&1 | tee /tmp/deploy.log; then
+              echo "POST_DEPLOY_OK=true" >> $GITHUB_ENV
+            else
+              echo "POST_DEPLOY_OK=false" >> $GITHUB_ENV
+            fi
+          fi
+
       - name: Callback — merged
         run: |
           python3 - <<'PY'
           import json, os, urllib.request
+          deploy = os.environ.get("POST_DEPLOY_OK", "?")
+          extra = " · auto-deployed" if deploy == "true" else (" · deploy skipped (no CLOUDFLARE_API_TOKEN secret)" if deploy == "skipped" else " · deploy FAILED — surface may not reflect merge")
           body = {
             "fix_id": int(os.environ["FIX_ID"]),
             "feedback_id": int(os.environ["FEEDBACK_ID"]),
@@ -397,4 +429,5 @@ jobs:
             headers={"Content-Type":"application/json","Authorization":"Bearer "+os.environ["MCP_CLIENT_TOKEN"],"User-Agent":"spacesc-fix-bot/1.0"},
           )
           urllib.request.urlopen(req, timeout=15).read()
+          print(f"Merge callback sent · deploy={deploy}")
           PY

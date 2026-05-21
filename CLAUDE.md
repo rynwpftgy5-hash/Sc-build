@@ -40,6 +40,61 @@ Things that intentionally do NOT live in this repo:
 
 ## How (build conventions)
 
+### Three load-bearing rules — read these FIRST every session (§8.4a.25e)
+
+These three caused the most user pain in the week of 2026-05-18 → 2026-05-21.
+If you skip any of them, the user loses confidence and spends his afternoon
+QC'ing the agent's output. They are non-negotiable.
+
+**Rule 1 — Deploy from `main` first.**
+Before any other work in a SpaceSC session, run `npm run deploy` from the
+worktree root. The deploy uses the current files on disk; if you're not on
+`main` or your tree drifted, you will ship the wrong code. After deploy,
+verify: `gh pr list --state open` should have no `auto-fix:` PRs older than
+your last deploy that you haven't accounted for. **Why this exists:** on
+2026-05-21 Campbell's Share button took 24 hours to appear because the
+auto-fix PR merged to `main` but no deploy ran. The Worker was serving the
+pre-merge bundle. He thought the feature had failed when it had just never
+been pushed to the live site.
+
+**Rule 2 — Customer language is the default. Translate or hide jargon.**
+The user is the principal customer, not a colleague or developer. He doesn't
+know — and shouldn't have to know — what these mean:
+
+| Don't say (developer) | Do say (customer) |
+|---|---|
+| PR / pull request | "your proposed change" / "the fix" |
+| merge / merge to main | "save the change" / "ship the fix" |
+| diff / code change | "what we'd change" |
+| CI green / typecheck pass | "passed our safety tests" |
+| T1 / T2 / T3 | "Quick fix / Bigger change / Needs human" |
+| F12 / F14 / blindspot | "what we missed" / "what we'd add" |
+| branch / commit / repo | (omit — replace with "the live site" or "the saved copy") |
+| deploy / wrangler | "publish to the live site" |
+| MCP / endpoint / workflow | (omit — describe the user-visible behavior) |
+
+If you must reference internal IDs (PR numbers, file paths, tier letters,
+F-codes), put them behind a "Technical details" disclosure or in a small
+footnote. Never in the main body of a response. **Why this exists:** Campbell
+called this out at least 5 times in the week of 2026-05-18 to 2026-05-21,
+and each time I regressed within a few hours.
+
+**Rule 3 — Done = live AND verified. "Shipped" is a lie until you can see it.**
+A fix is not shipped when the PR merges. A fix is not shipped when CI passes.
+A fix is shipped when:
+  (a) The live surface (`https://spacesc-mcp.75xnd2784n.workers.dev/<path>`)
+      returns the new content, AND
+  (b) You verified by reading the live HTML for a distinctive marker from
+      the change (a new emoji, a new function name, the changed copy), AND
+  (c) The `live_at` column in `feedback_fixes` is non-null for the row.
+
+If any of those three are false, the surface should show "saved to repo ·
+waiting for next deploy" — never "Shipped." **Why this exists:** all six
+auto-fix PRs on 2026-05-21 declared "Shipped" 24h before they were actually
+live. The customer experience was "the system lied to me." Don't lie.
+
+### The other build conventions (less load-bearing but still required)
+
 - **Session opener — feedback inbox + blindspots** (§8.4a.25). On every
   Claude Code session that touches SpaceSC UI surfaces, **first** call the
   two MCP tools:
@@ -75,7 +130,7 @@ Things that intentionally do NOT live in this repo:
      SFDIPOT coverage walk, and oracles (Claims + Purpose load-bearing).
      Find issues and fix them in the same turn; do not surface a bug list
      as a decision for the user.
-  3. **Past-failure register** (Part 3) — scan F1–F14 for repeating
+  3. **Past-failure register** (Part 3) — scan F1–F15 for repeating
      patterns.
   4. **Session debrief** (Part 4) — paste the structured debrief block
      at the end of the turn. The "User-outcome reach" line is
@@ -125,7 +180,9 @@ Things that intentionally do NOT live in this repo:
     that flow whole.
   - `localStorage.spacesc_tracking_gaps` persists the gap-capture pipeline
     tracker across reloads; auto-prunes at 24h.
-- **ADR-024 failure register** is currently at F1–F14. F13 ("tests pass" ≠
+- **ADR-024 failure register** is currently at F1–F15. F15 ("merge ≠ live")
+  was added 2026-05-21 after Campbell's Share button took 24h to appear
+  because PR merged but no deploy ran. F13 ("tests pass" ≠
   user-outcome reach) and F14 (polled positive-signal-only state) are the
   most recently added; both came from the UC3 player. Scan before any UI
   build.

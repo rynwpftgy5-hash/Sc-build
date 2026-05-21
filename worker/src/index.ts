@@ -3090,11 +3090,33 @@ export default {
 			);
 		} else if (event.cron === "*/2 * * * *") {
 			ctx.waitUntil(drainFeedbackFixQueue(env));
+			ctx.waitUntil(selfMarkLive(env));
 		} else {
 			console.warn(`scheduled: unknown cron expression "${event.cron}"`);
 		}
 	},
 };
+
+// §8.4a.25c F15 — self-mark live: every Worker boot (= every deploy) we flip
+// any "merged but not yet live" rows to live. The /2-min cron tick calls this
+// alongside the queue drain; the surface shows the honest two-state truth
+// (merged-to-main vs actually-live).
+async function selfMarkLive(env: Env): Promise<void> {
+	try {
+		const now = Math.floor(Date.now() / 1000);
+		const r = await env.UC3_DB
+			.prepare(
+				`UPDATE feedback_fixes SET live_at = ?
+				 WHERE status = 'merged' AND live_at IS NULL`,
+			)
+			.bind(now)
+			.run();
+		const changes = (r.meta as { changes?: number }).changes ?? 0;
+		if (changes > 0) console.log(`selfMarkLive: marked ${changes} merged rows as live`);
+	} catch (err) {
+		console.error("selfMarkLive failed:", (err as Error).message);
+	}
+}
 
 // §8.4a.25c — feedback-fix queue drain. Cloudflare cron fires this every 2 min,
 // reliably (GitHub free-tier schedule trigger doesn't fire reliably).

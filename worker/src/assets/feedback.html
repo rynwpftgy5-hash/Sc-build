@@ -366,7 +366,7 @@ function FeedbackRow({ item, active, onClick }) {
           <>
             <span>·</span>
             <span className="fb-row-bs-tag" style={{ color: item.fix.status === "merged" ? "var(--green)" : item.fix.status === "proposed" ? "var(--accent)" : "var(--ink-mute)" }}>
-              {item.fix.status === "merged" && "✓ shipped"}
+              {item.fix.status === "merged" && (item.fix.live_at ? "✓ live" : "shipped to repo")}
               {item.fix.status === "proposed" && "fix ready"}
               {item.fix.status === "punted" && "needs human review"}
               {item.fix.status === "pending" && "in queue"}
@@ -586,11 +586,17 @@ function FixPanel({ item, onPropose, onApply, proposing, applying }) {
     );
   }
   if (fix.status === "merged") {
+    // §8.4a.25c F15 — distinguish "merged to main" from "live on the running
+    // Worker". A Worker self-mark step flips live_at on next deploy; until
+    // then, we tell the truth.
+    const isLive = !!fix.live_at;
     return (
-      <div className="diag" style={{ background: "rgba(59,109,17,0.05)", borderColor: "rgba(59,109,17,0.25)" }}>
+      <div className="diag" style={{ background: isLive ? "rgba(59,109,17,0.05)" : "rgba(24,95,165,0.05)", borderColor: isLive ? "rgba(59,109,17,0.25)" : "rgba(24,95,165,0.25)" }}>
         <div className="diag-h">
-          <span className="diag-badge" style={{ background: "var(--green)" }}>Shipped</span>
-          <span className="diag-cat" style={{ color: "var(--green)" }}>fix is live</span>
+          <span className="diag-badge" style={{ background: isLive ? "var(--green)" : "var(--accent)" }}>{isLive ? "Live" : "Shipped to repo"}</span>
+          <span className="diag-cat" style={{ color: isLive ? "var(--green)" : "var(--accent)" }}>
+            {isLive ? "fix is live on the site" : "waiting for next deploy to go live"}
+          </span>
         </div>
         {fix.proposed_rationale && (
           <div className="diag-row">
