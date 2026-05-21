@@ -110,6 +110,14 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # §8.4a.25c fix — grant the tools the agent actually needs. Run
+          # 26198171364 showed 9 permission denials and no /tmp/tier.json
+          # output. acceptEdits skips file-confirm prompts (non-interactive).
+          # Bash is scoped narrowly to the commands the prompt tells the
+          # agent to run.
+          claude_args: |
+            --permission-mode acceptEdits
+            --allowed-tools "Read,Write,Edit,Glob,Grep,Bash(npm:*),Bash(cat /tmp/*),Bash(ls /tmp*),Bash(node:*),Bash(python3:*)"
           prompt: |
             You are the SpaceSC auto-fix agent for the feedback row referenced
             in /tmp/context.json. Read that file first.
