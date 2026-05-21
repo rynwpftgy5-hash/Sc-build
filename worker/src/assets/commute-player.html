@@ -1898,7 +1898,7 @@ const CAPTURE_KINDS = {
   gap: { icon: "🎓", title: "Learning gap", placeholder: "Teach me about X — specifically the part where…", api: "captureGap",
     payload: (text, src) => ({
       gap_title: truncate(text, 100), voice_capture_text: text,
-      trigger_surface: "Commute Player", domain: "Cross-cutting",
+      trigger_surface: "UC3-CommutePlayer", domain: "Cross-cutting",
       trigger_source_doc_id: src.articleId || undefined,
       notes: sourceContextString(src),
     })
