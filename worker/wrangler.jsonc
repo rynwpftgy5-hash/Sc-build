@@ -77,12 +77,10 @@
 			}
 		]
 	},
-	/* Item 2: daily briefing cron.
-	   11:00 UTC = 7:00 AM ET / 4:00 AM PT. Gives ~3-4h before a 9am commute
-	   for Sonnet synthesis + ElevenLabs chunked TTS (~3-5 min wall) plus
-	   buffer. Generator is idempotent on briefing_date so retries on
-	   transient failure are safe. */
+	/* Cron triggers (§8.4a.25c — Cloudflare cron replaces unreliable GitHub free-tier schedule).
+	   - 0 11 * * *  → daily briefing
+	   - /2 * * * *  → drain feedback-fix queue (every 2 min) */
 	"triggers": {
-		"crons": ["0 11 * * *"]
+		"crons": ["0 11 * * *", "*/2 * * * *"]
 	}
 }

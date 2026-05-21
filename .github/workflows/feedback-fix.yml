@@ -229,8 +229,59 @@ jobs:
             git diff --name-only > /tmp/files-touched.txt
           fi
 
-      - name: Open PR
+      # §8.4a.25c safety gate — type-check INSIDE this workflow before opening PR.
+      # GitHub blocks GITHUB_TOKEN-opened PRs from triggering external CI.
+      - name: Set up Node
         if: steps.target.outputs.have_target == 'true' && steps.changes.outputs.has_changes == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Type-check proposed change
+        if: steps.target.outputs.have_target == 'true' && steps.changes.outputs.has_changes == 'true'
+        id: typecheck
+        run: |
+          set +e
+          npm ci --no-audit --no-fund > /tmp/install.log 2>&1
+          if [ $? -ne 0 ]; then
+            echo "typecheck_ok=false" >> $GITHUB_OUTPUT
+            echo "typecheck_err=npm install failed" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          npm run -s type-check > /tmp/typecheck.log 2>&1
+          if [ $? -eq 0 ]; then
+            echo "typecheck_ok=true" >> $GITHUB_OUTPUT
+          else
+            echo "typecheck_ok=false" >> $GITHUB_OUTPUT
+            ERR=$(tail -10 /tmp/typecheck.log | tr -d '\r' | head -c 400)
+            echo "typecheck_err<<EOF" >> $GITHUB_OUTPUT
+            echo "$ERR" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+      - name: Abort if type-check failed
+        if: steps.target.outputs.have_target == 'true' && steps.changes.outputs.has_changes == 'true' && steps.typecheck.outputs.typecheck_ok == 'false'
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          err = """${{ steps.typecheck.outputs.typecheck_err }}""".strip()[:400]
+          body = {
+            "fix_id": int(os.environ["FIX_ID"]),
+            "feedback_id": int(os.environ["FEEDBACK_ID"]),
+            "stage": "failed",
+            "error_text": "Type-check failed on the proposed change. PR not opened. " + err,
+          }
+          req = urllib.request.Request(
+            os.environ["WORKER_BASE"] + "/api/feedback-fix-callback",
+            data=json.dumps(body).encode(),
+            method="POST",
+            headers={"Content-Type":"application/json","Authorization":"Bearer "+os.environ["MCP_CLIENT_TOKEN"],"User-Agent":"spacesc-fix-bot/1.0"},
+          )
+          urllib.request.urlopen(req, timeout=15).read()
+          PY
+          echo "Aborting: type-check failed"
+          exit 1
+
+      - name: Open PR
+        if: steps.target.outputs.have_target == 'true' && steps.changes.outputs.has_changes == 'true' && steps.typecheck.outputs.typecheck_ok != 'false'
         id: pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -260,7 +311,7 @@ jobs:
           # human click in /feedback to fire the merge workflow.
 
       - name: Callback — proposed
-        if: steps.target.outputs.have_target == 'true' && (steps.tier.outputs.tier == 'T1' || steps.tier.outputs.tier == 'T2')
+        if: steps.target.outputs.have_target == 'true' && (steps.tier.outputs.tier == 'T1' || steps.tier.outputs.tier == 'T2') && steps.typecheck.outputs.typecheck_ok != 'false'
         run: |
           python3 - <<'PY'
           import json, os, urllib.request
