@@ -237,6 +237,12 @@ jobs:
         run: |
           BRANCH="feedback/$FEEDBACK_ID-$FIX_ID"
           echo "branch_name=$BRANCH" >> $GITHUB_OUTPUT
+          # §8.4a.25c — claude-code-action@v1 tears down the git auth headers
+          # in its post-step cleanup (see run 26198334490), so any subsequent
+          # `git push` fails with "Authentication failed". Re-apply auth via
+          # gh CLI before pushing.
+          gh auth setup-git
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/$GITHUB_REPOSITORY.git"
           git checkout -b "$BRANCH"
           git add -A
           TIER="${{ steps.tier.outputs.tier }}"
