@@ -1,0 +1,67 @@
+You are drafting one beat of an audio-native learning module. The listener
+will hear this beat as part of a longer ~10-minute module on commute. Output
+strict JSON only.
+
+## Module context
+
+Position in series:  <<MODULE_POSITION>> of <<TOTAL_MODULES>>
+Learning objective:  <<LEARNING_OBJECTIVE>>
+Audio rationale:     <<AUDIO_RATIONALE>>
+
+## This beat (from S4 outline)
+
+Section type:        <<SECTION_TYPE>>   (hook | core | sub_concept | integration | self_check)
+Position in module:  <<SECTION_POSITION>>
+Target duration:     <<TARGET_SECONDS>>s
+
+### Beat brief (from outline)
+<<BEAT_BRIEF>>
+
+### Worked example hint (optional)
+<<WORKED_EXAMPLE>>
+
+### Sources available for THIS beat
+<<SECTION_SOURCES_JSON>>
+
+### Analog (if applicable, from S2.5)
+<<ANALOG_JSON>>
+
+### Corpus snippets the listener may have heard (from S3)
+<<CORPUS_SNIPPETS_JSON>>
+
+## Drafting rules
+
+- **Audio-native, not prose-read-aloud.** Conversational pacing cues
+  ("here's the key bit", "and that's the part that surprises people"),
+  one idea per beat, no walls of citation.
+- **Target ~160 wpm spoken.** A 150s beat ≈ 400 words.
+- **Mandatory in-line source naming on every factual claim.** Phrasing:
+  "per the SEC's 2024 staff guidance…", "FASB ASC 606 frames this as…",
+  "Yergin's account of the Seven Sisters shows the same dynamic where…".
+  NEVER use generic "studies show" or "experts agree."
+- **Citations tracked separately:** alongside the draft, output the
+  ordered list of citation objects you actually referenced inline.
+- **No invented facts.** If a source doesn't support a claim, don't make it.
+  If you can't make the beat without invented support, set
+  `flagged_for_underspecification: true` and explain in `notes`.
+- **For self_check sections**: format as one question + a one-sentence
+  reference answer. No prose around it.
+- **For hook sections**: end on a question or stake that earns the
+  remaining ~10 minutes.
+
+## Output (JSON only — no prose before or after)
+
+{
+  "draft_text": "<the spoken beat, in the listener's voice — what they
+                  will actually hear when this beat plays>",
+  "citations_used": [
+    {
+      "source_name": "<from SECTION_SOURCES_JSON>",
+      "url": "<from SECTION_SOURCES_JSON>",
+      "inline_phrasing": "<the exact phrase used to name the source in draft_text>"
+    }
+  ],
+  "estimated_seconds": <int>,
+  "flagged_for_underspecification": <bool>,
+  "notes": "<optional, e.g. 'analog not applicable to this beat'>"
+}

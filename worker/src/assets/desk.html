@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SpaceSC Desk</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#faf9f5">
+<style>
+:root {
+  --bg: #faf9f5;
+  --bg-elev: #ffffff;
+  --bg-sunken: #f1efe8;
+  --ink: #1f1d18;
+  --ink-soft: #56544c;
+  --ink-mute: #888780;
+  --line: #e7e5dc;
+  --line-strong: #d4d1c4;
+  --accent: #185fa5;
+  --accent-warm: #854f0b;
+  --green: #3b6d11;
+  --red: #a32d2d;
+  --purple: #534ab7;
+  --shadow: 0 1px 3px rgba(0,0,0,0.05);
+  --shadow-rise: 0 4px 12px rgba(0,0,0,0.08);
+  --radius: 10px;
+  --radius-lg: 16px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { background: var(--bg); color: var(--ink); }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.5;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: 80px;
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+input, textarea, select { font: inherit; color: inherit; }
+
+.app { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+/* Top bar */
+.topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 0 12px;
+  border-bottom: 0.5px solid var(--line);
+  margin-bottom: 14px;
+}
+.topbar-title { font-size: 20px; font-weight: 600; flex: 1; }
+.topbar-sub { font-size: 12px; color: var(--ink-mute); margin-left: 8px; }
+.topbar-gear { font-size: 18px; color: var(--ink-soft); padding: 4px 8px; }
+
+/* Tabs */
+.tabs { display: flex; gap: 2px; background: var(--bg-sunken); border-radius: 999px; padding: 4px; margin-bottom: 18px; }
+.tab { flex: 1; padding: 9px 16px; font-size: 13px; font-weight: 500; border-radius: 999px; color: var(--ink-soft); background: none; border: none; }
+.tab.active { background: var(--bg-elev); color: var(--ink); box-shadow: var(--shadow); }
+
+/* Section header */
+.section { margin: 22px 0 10px; display: flex; align-items: baseline; gap: 10px; }
+.section-icon { font-size: 16px; }
+.section-title { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); }
+.section-meta { font-size: 12px; color: var(--ink-mute); margin-left: auto; }
+.section + .section { margin-top: 28px; }
+.section.first { margin-top: 0; }
+.section-desc { font-size: 13px; color: var(--ink-soft); margin-bottom: 10px; line-height: 1.5; }
+
+/* Card */
+.card {
+  background: var(--bg-elev);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg);
+  margin-bottom: 10px;
+}
+.card-tap { cursor: pointer; }
+.card-tap:hover { border-color: var(--line-strong); background: var(--bg-elev); }
+
+.row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.row + .row { border-top: 0.5px solid var(--line); }
+.row-main { flex: 1; min-width: 0; }
+.row-title { font-size: 14px; font-weight: 500; line-height: 1.35; }
+.row-sub { font-size: 12px; color: var(--ink-soft); margin-top: 3px; }
+.row-meta { font-size: 11px; color: var(--ink-mute); margin-top: 4px; }
+.row-chevron { color: var(--ink-mute); font-size: 16px; }
+
+/* Chips */
+.chips { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; background: var(--bg-sunken); color: var(--ink-soft); border: 0.5px solid var(--line); }
+.chip-p1 { color: var(--red); border-color: var(--red); background: rgba(163,45,45,.07); }
+
+/* Badge */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: 12px;
+  font-size: 11px; font-weight: 500;
+  border: 0.5px solid;
+}
+.badge-new      { color: var(--accent);      border-color: var(--accent);      background: rgba(24,95,165,.07); }
+.badge-retrieve { color: var(--purple);      border-color: var(--purple);      background: rgba(83,74,183,.07); }
+.badge-retrieved{ color: var(--accent-warm); border-color: var(--accent-warm); background: rgba(133,79,11,.07); }
+.badge-listened { color: var(--green);       border-color: var(--green);       background: rgba(59,109,17,.07); }
+.badge-ingest   { color: var(--green);       border-color: var(--green);       background: rgba(59,109,17,.07); }
+.badge-skip     { color: var(--ink-mute);    border-color: var(--line-strong); background: var(--bg-sunken); }
+.badge-done     { color: var(--ink-mute);    border-color: var(--line-strong); background: var(--bg-sunken); }
+.badge-muted    { color: var(--ink-mute);    border-color: var(--line-strong); background: var(--bg-sunken); }
+
+/* Action buttons row in cards */
+.actions { display: flex; gap: 6px; padding: 0 16px 12px; flex-wrap: wrap; }
+.action-pill {
+  padding: 6px 11px; border-radius: 999px;
+  background: var(--bg-sunken); border: 0.5px solid var(--line);
+  font-size: 12px; font-weight: 500; color: var(--ink);
+}
+.action-pill:hover { background: var(--bg); border-color: var(--line-strong); }
+.action-pill.primary { background: var(--ink); color: var(--bg-elev); border-color: var(--ink); }
+.action-pill.danger  { color: var(--red); }
+
+/* Empty / loading */
+.empty { text-align: center; padding: 40px 24px; color: var(--ink-mute); font-size: 14px; line-height: 1.6; }
+.empty-icon { font-size: 28px; margin-bottom: 12px; opacity: .5; }
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--ink); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Filter chips for inbox */
+.filter-row { display: flex; gap: 6px; margin: 0 0 14px; overflow-x: auto; padding-bottom: 4px; }
+.filter-chip { white-space: nowrap; padding: 6px 14px; border-radius: 999px; font-size: 12px; font-weight: 500; background: var(--bg-sunken); border: 0.5px solid var(--line); color: var(--ink-soft); }
+.filter-chip.active { background: var(--ink); color: var(--bg-elev); border-color: var(--ink); }
+
+/* Today's drive footer (sticky) */
+.drive-footer {
+  position: fixed; left: 0; right: 0;
+  bottom: env(safe-area-inset-bottom);
+  background: var(--bg-elev);
+  border-top: 0.5px solid var(--line);
+  padding: 12px 24px;
+  box-shadow: var(--shadow-rise);
+  z-index: 40;
+}
+.drive-footer-inner { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
+.drive-footer-label { font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; }
+.drive-footer-count { font-size: 16px; font-weight: 600; }
+.drive-footer-sub { font-size: 12px; color: var(--ink-soft); flex: 1; }
+.drive-footer-link {
+  padding: 8px 16px; border-radius: 999px;
+  background: var(--ink); color: var(--bg-elev);
+  font-size: 13px; font-weight: 500; text-decoration: none;
+}
+
+/* Capture-link rows (for Captures tab deep-link panel) */
+.capture-link { display: flex; align-items: center; gap: 12px; padding: 14px 16px; text-decoration: none; color: var(--ink); }
+.capture-link + .capture-link { border-top: 0.5px solid var(--line); }
+.capture-link-icon { font-size: 22px; }
+.capture-link-text { flex: 1; }
+.capture-link-name { font-size: 14px; font-weight: 500; }
+.capture-link-desc { font-size: 12px; color: var(--ink-mute); margin-top: 2px; }
+.capture-link-arrow { color: var(--ink-mute); font-size: 14px; }
+
+/* Toasts */
+.toast {
+  position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+  background: var(--ink); color: var(--bg-elev);
+  padding: 12px 20px; border-radius: 999px; font-size: 14px;
+  z-index: 100; box-shadow: var(--shadow-rise);
+  animation: toast-in .2s;
+}
+@keyframes toast-in { from { transform: translate(-50%, 12px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+
+/* Login */
+.login-page { padding: 60px 24px; text-align: center; max-width: 420px; margin: 0 auto; }
+.login-title { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+.login-sub { font-size: 14px; color: var(--ink-soft); margin-bottom: 28px; }
+.login-input { width: 100%; padding: 14px; border-radius: var(--radius); background: var(--bg-elev); border: 0.5px solid var(--line); font-size: 14px; font-family: ui-monospace, monospace; }
+.login-btn { width: 100%; padding: 14px; border-radius: var(--radius); background: var(--ink); color: var(--bg-elev); font-size: 15px; font-weight: 600; margin-top: 12px; }
+
+/* Settings */
+.settings-row { padding: 14px 16px; }
+.settings-row + .settings-row { border-top: 0.5px solid var(--line); }
+.settings-label { font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.settings-val { font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-soft); }
+.settings-input { width: 100%; padding: 10px 12px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-family: ui-monospace, monospace; font-size: 13px; margin-top: 8px; }
+.settings-action { color: var(--accent); font-size: 14px; padding: 8px 0; background: none; border: none; }
+.settings-action.danger { color: var(--red); }
+
+/* Cross-surface NavMenu (top-right pill) — mirrors the player's pattern */
+.nav-pill { position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); z-index: 80; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px 7px 10px; background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); font-size: 12px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.nav-pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
+.nav-pill-chev { font-size: 10px; color: var(--ink-mute); transition: transform .2s; }
+.nav-pill.open .nav-pill-chev { transform: rotate(180deg); }
+.nav-backdrop { position: fixed; inset: 0; background: rgba(31,29,24,0.18); z-index: 79; }
+.nav-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 44px)); right: max(10px, env(safe-area-inset-right)); z-index: 80; width: min(280px, calc(100vw - 20px)); background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(31,29,24,0.18); overflow: hidden; }
+.nav-menu-header { padding: 10px 14px 8px; border-bottom: 0.5px solid var(--line); font-size: 10px; font-weight: 700; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; }
+.nav-menu-item { display: flex; align-items: center; gap: 10px; padding: 12px 14px; text-decoration: none; color: var(--ink); border-bottom: 0.5px solid var(--line); }
+.nav-menu-item:last-child { border-bottom: none; }
+.nav-menu-item.active { background: var(--ink); color: var(--bg-elev); }
+.nav-menu-icon { font-size: 18px; flex-shrink: 0; width: 26px; text-align: center; }
+.nav-menu-text { flex: 1; min-width: 0; }
+.nav-menu-name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.nav-menu-desc { font-size: 11px; color: var(--ink-mute); margin-top: 1px; }
+.nav-menu-item.active .nav-menu-desc { color: rgba(250,249,245,0.7); }
+.nav-menu-arrow { color: var(--ink-mute); font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useCallback } = React;
+
+// ═══════════════════════════════════════════════════════════════════════
+// API layer (mirrors player; shares the same token key for SSO across surfaces)
+// ═══════════════════════════════════════════════════════════════════════
+const BASE = "https://spacesc-mcp.75xnd2784n.workers.dev";
+const TOKEN_KEY = "spacesc_mcp_token";
+
+const API = {
+  getToken: () => { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (_) { return ""; } },
+  setToken: (t) => { try { localStorage.setItem(TOKEN_KEY, t); } catch (_) {} },
+  clearToken: () => { try { localStorage.removeItem(TOKEN_KEY); } catch (_) {} },
+  hasToken: () => !!API.getToken(),
+
+  async _readBody(r) {
+    try { const t = await r.text(); try { return { json: JSON.parse(t), text: t }; } catch (_) { return { json: null, text: t }; } } catch (_) { return { json: null, text: "" }; }
+  },
+  async _get(path) {
+    const t = API.getToken();
+    if (!t) throw Object.assign(new Error("no token"), { code: "NO_TOKEN" });
+    const r = await fetch(BASE + path, { headers: { Authorization: "Bearer " + t } });
+    if (r.status === 401 || r.status === 403) throw Object.assign(new Error("unauthorized"), { code: "AUTH" });
+    if (!r.ok) { const b = await API._readBody(r); throw Object.assign(new Error("HTTP " + r.status + ": " + (b.text || "").slice(0, 200)), { code: "HTTP_" + r.status }); }
+    return r.json();
+  },
+  async _post(path, body) {
+    const t = API.getToken();
+    if (!t) throw Object.assign(new Error("no token"), { code: "NO_TOKEN" });
+    const r = await fetch(BASE + path, { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t }, body: JSON.stringify(body || {}) });
+    if (r.status === 401 || r.status === 403) throw Object.assign(new Error("unauthorized"), { code: "AUTH" });
+    if (!r.ok) { const b = await API._readBody(r); throw Object.assign(new Error("HTTP " + r.status + ": " + (b.text || "").slice(0, 200)), { code: "HTTP_" + r.status }); }
+    return r.json();
+  },
+
+  listParkingLot: (statusFilter, limit) => API._post("/api/parking-lot-list", { status_filter: statusFilter, sort: "priority_then_email", limit: limit || 50 }),
+  updateParkingLot: (page_id, properties) => API._post("/api/parking-lot-update", { page_id, properties }),
+  errataList: () => API._get("/api/uc3/module-errata-list?status=open"),
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════
+const truncate = (s, n) => { if (!s) return ""; if (s.length <= n) return s; return s.slice(0, n).replace(/[,;:.\s]+\S*$/, "") + "…"; };
+
+const timeAgo = (iso) => {
+  if (!iso) return "";
+  const t = typeof iso === "number" ? iso * 1000 : new Date(iso).getTime();
+  if (!t || isNaN(t)) return "";
+  const diff = Date.now() - t;
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return Math.floor(diff / 60_000) + "m ago";
+  if (diff < 86_400_000) return Math.floor(diff / 3_600_000) + "h ago";
+  if (diff < 86_400_000 * 7) return Math.floor(diff / 86_400_000) + "d ago";
+  return new Date(t).toLocaleDateString();
+};
+
+const fmtTime = (s) => {
+  if (!s || !Number.isFinite(s)) return "0:00";
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return m + ":" + String(sec).padStart(2, "0");
+};
+
+// What does "today" mean for the morning routine? — anything in the last 24h
+const isToday = (iso) => {
+  if (!iso) return false;
+  const t = typeof iso === "number" ? iso * 1000 : new Date(iso).getTime();
+  return Date.now() - t < 86_400_000;
+};
+
+const statusBadgeClass = (s) => {
+  if (s === "New") return "badge-new";
+  if (s === "Retrieve Tomorrow") return "badge-retrieve";
+  if (s === "Retrieved") return "badge-retrieved";
+  if (s === "Listened") return "badge-listened";
+  if (s === "Ingest" || s === "Insight") return "badge-ingest";
+  if (s === "Skip" || s === "Done") return "badge-skip";
+  return "badge-muted";
+};
+
+const NOTION_LINKS = {
+  oq:     "https://www.notion.so/35d4834493df8104b563d9322d6d0f9d",
+  gaps:   "https://www.notion.so/35ebac9a784141bc91fd224b58feb9a3",
+  parking:"https://www.notion.so/f3a2418b6c9a4ac392ad3df613bf5772",
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// Login
+// ═══════════════════════════════════════════════════════════════════════
+function LoginPage({ onSaved }) {
+  const [val, setVal] = useState("");
+  const [err, setErr] = useState(null);
+  const [verifying, setVerifying] = useState(false);
+
+  const tryToken = async () => {
+    if (!val.trim()) return;
+    setVerifying(true); setErr(null);
+    API.setToken(val.trim());
+    try {
+      await API.listParkingLot(["Retrieved"], 1);
+      onSaved();
+    } catch (e) {
+      if (e.code === "AUTH" || (e.message || "").includes("401")) {
+        API.clearToken();
+        setErr("Token rejected. Paste the right one.");
+      } else {
+        onSaved();
+      }
+      setVerifying(false);
+    }
+  };
+
+  return (
+    <div className="app">
+      <div className="login-page">
+        <div className="login-title">SpaceSC Desk</div>
+        <div className="login-sub">Paste your bearer token to begin. Same token across all SpaceSC surfaces.</div>
+        <input className="login-input" type="password" placeholder="bearer token"
+          value={val} onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") tryToken(); }} autoFocus />
+        {err && <div style={{ color: "var(--red)", fontSize: 13, marginTop: 10 }}>{err}</div>}
+        <button className="login-btn" onClick={tryToken} disabled={verifying}>
+          {verifying ? "Verifying…" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Item row — reusable card for parking lot items
+// ═══════════════════════════════════════════════════════════════════════
+function ItemRow({ a, onTriage, onOpenReading, showActions }) {
+  const sourceLine = a.source_newsletter || a.source_email ||
+    (a.article_url ? new URL(a.article_url).hostname.replace(/^www\./, "") : "");
+  const domains = Array.isArray(a.domain) ? a.domain : (a.domain ? [a.domain] : []);
+  const topics = Array.isArray(a.topics) ? a.topics : (a.topics ? [a.topics] : []);
+  return (
+    <div className="card">
+      <div className="row">
+        <div className="row-main">
+          <div className="row-title">{truncate(a.title || "(untitled)", 110)}</div>
+          {sourceLine && <div className="row-sub">{sourceLine}</div>}
+          <div className="chips">
+            <span className={"badge " + statusBadgeClass(a.status)}>{a.status || "—"}</span>
+            {a.priority && <span className={"chip " + (a.priority === "P1" ? "chip-p1" : "")}>{a.priority}</span>}
+            {domains.slice(0, 2).map((d, i) => <span key={"d" + i} className="chip">{d}</span>)}
+            {topics.slice(0, 2).map((t, i) => <span key={"t" + i} className="chip">{t}</span>)}
+            {a.email_received && <span className="chip">{timeAgo(a.email_received)}</span>}
+          </div>
+        </div>
+      </div>
+      {showActions !== false && (
+        <div className="actions">
+          {a.article_url && (
+            <a className="action-pill" href={a.article_url} target="_blank" rel="noreferrer">↗ Source</a>
+          )}
+          <button className="action-pill primary" onClick={() => onOpenReading(a)}>📖 Read</button>
+          {a.status !== "Retrieved" && (
+            <button className="action-pill" onClick={() => onTriage(a, "Retrieved")}>🎧 Queue for drive</button>
+          )}
+          {a.status !== "Retrieve Tomorrow" && a.status !== "Retrieved" && (
+            <button className="action-pill" onClick={() => onTriage(a, "Retrieve Tomorrow")}>🌙 Retrieve overnight</button>
+          )}
+          {a.status !== "Ingest" && (
+            <button className="action-pill" onClick={() => onTriage(a, "Ingest")}>💎 Ingest</button>
+          )}
+          {a.status !== "Skip" && (
+            <button className="action-pill danger" onClick={() => onTriage(a, "Skip")}>⏭ Skip</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TODAY — morning routine (overnight intake + captures-from-today + up-next-on-drive)
+// ═══════════════════════════════════════════════════════════════════════
+function TodayScreen({ refreshKey, onTriage, onOpenReading, onRetry }) {
+  const [loading, setLoading] = useState(true);
+  const [overnight, setOvernight] = useState([]);
+  const [queuedForDrive, setQueuedForDrive] = useState([]);
+  const [flaggedToday, setFlaggedToday] = useState([]);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setError(null);
+    Promise.all([
+      // Anything triaged in the last 24h (New or Retrieved-overnight or Retrieve-Tomorrow)
+      API.listParkingLot(["New", "Retrieved", "Retrieve Tomorrow"], 30).catch(e => ({ _err: e })),
+      // What's currently queued for the drive
+      API.listParkingLot(["Retrieved"], 50).catch(e => ({ _err: e })),
+      // Flagged claims captured during playback
+      API.errataList().catch(e => ({ _err: e })),
+    ]).then(([a, b, c]) => {
+      if (cancelled) return;
+      if (a._err) { setError(a._err.message); setLoading(false); return; }
+      // Overnight intake = items whose email_received OR retrieved_at landed in last 24h
+      const recent = (a.rows || []).filter((r) => isToday(r.email_received) || isToday(r.retrieved_at));
+      setOvernight(recent.slice(0, 8));
+      setQueuedForDrive(b._err ? [] : (b.rows || []));
+      const errata = c._err ? [] : ((c.result && c.result.errata) || []);
+      setFlaggedToday(errata.filter((e) => isToday(e.created_at)).slice(0, 5));
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [refreshKey]);
+
+  if (loading) return <div className="empty"><div className="spinner"></div></div>;
+  if (error) return (
+    <div className="empty">
+      <div className="empty-icon">⚠</div>
+      Couldn't load: {error}
+      <div style={{ marginTop: 12 }}>
+        <button className="play-btn-secondary" onClick={onRetry}>↻ Retry</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="section first">
+        <div className="section-icon">🌅</div>
+        <div className="section-title">Overnight intake</div>
+        <div className="section-meta">{overnight.length}</div>
+      </div>
+      <div className="section-desc">New material since you last sat down. Triage it now — read it deeply, queue it for the drive, mark for ingestion, or skip.</div>
+      {overnight.length === 0 ? (
+        <div className="empty"><div className="empty-icon">🌙</div>Nothing new came in overnight. Either the ingest pipeline is quiet or you've already triaged everything.</div>
+      ) : (
+        overnight.map((a) => <ItemRow key={a.page_id} a={a} onTriage={onTriage} onOpenReading={onOpenReading} />)
+      )}
+
+      <div className="section">
+        <div className="section-icon">💭</div>
+        <div className="section-title">Captures from today</div>
+        <div className="section-meta">{flaggedToday.length} flag{flaggedToday.length === 1 ? "" : "s"}</div>
+      </div>
+      <div className="section-desc">Things you flagged or captured while listening today. Tap to jump to the source moment.</div>
+      {flaggedToday.length === 0 ? (
+        <div className="empty"><div className="empty-icon">🚩</div>No flags from today's listening yet. <br/>For insights, RNs, open questions, and learning gaps captured during commute, see the deep links in the Captures tab.</div>
+      ) : (
+        flaggedToday.map((e) => (
+          <div key={e.id} className="card card-tap" onClick={() => window.open(`/uc3#mod=${e.module_id}&t=${e.timestamp_seconds}`, "_self")}>
+            <div className="row">
+              <div className="row-main">
+                <div className="row-title">{truncate(e.notes, 130)}</div>
+                <div className="row-sub">Flagged at {fmtTime(e.timestamp_seconds || 0)} · {timeAgo(e.created_at)}</div>
+              </div>
+              <span className="row-chevron">↗</span>
+            </div>
+          </div>
+        ))
+      )}
+
+      <div className="section">
+        <div className="section-icon">🎧</div>
+        <div className="section-title">Up next on your drive</div>
+        <div className="section-meta">{queuedForDrive.length}</div>
+      </div>
+      <div className="section-desc">What's queued for the Commute Player right now. These play in priority order.</div>
+      {queuedForDrive.length === 0 ? (
+        <div className="empty"><div className="empty-icon">🚗</div>Nothing queued. Triage items above to fill your next drive.</div>
+      ) : (
+        queuedForDrive.slice(0, 5).map((a, i) => (
+          <div key={a.page_id} className="card card-tap" onClick={() => onOpenReading(a)}>
+            <div className="row">
+              <div className="row-main">
+                <div className="row-title">{i + 1}. {truncate(a.title || "(untitled)", 100)}</div>
+                <div className="row-sub">{a.source_newsletter || a.source_email || ""} · {a.priority || ""}</div>
+              </div>
+              <span className="row-chevron">→</span>
+            </div>
+          </div>
+        ))
+      )}
+      {queuedForDrive.length > 5 && (
+        <div style={{ textAlign: "center", marginTop: 8 }}>
+          <a href="/uc3" className="action-pill primary" style={{ textDecoration: "none" }}>
+            Open the full queue in the player →
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// INBOX — parking lot list with status filter
+// ═══════════════════════════════════════════════════════════════════════
+const INBOX_STATUSES = [
+  { key: "New",                label: "New",          status: ["New"] },
+  { key: "Retrieve Tomorrow",  label: "Retrieve overnight", status: ["Retrieve Tomorrow"] },
+  { key: "Retrieved",          label: "Queued for drive",   status: ["Retrieved"] },
+  { key: "Listened",           label: "Listened",     status: ["Listened"] },
+  { key: "Insight",            label: "Insight",      status: ["Insight"] },
+  { key: "Done",               label: "Done",         status: ["Done"] },
+  { key: "Skip",               label: "Skipped",      status: ["Skip"] },
+  { key: "All",                label: "All",          status: null },
+];
+
+function InboxScreen({ refreshKey, onTriage, onOpenReading, onRetry }) {
+  const [activeFilter, setActiveFilter] = useState("New");
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState([]);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setError(null);
+    const filter = INBOX_STATUSES.find((s) => s.key === activeFilter);
+    API.listParkingLot(filter ? filter.status : null, 100)
+      .then((r) => { if (cancelled) return; setItems(r.rows || []); setLoading(false); })
+      .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [refreshKey, activeFilter]);
+
+  return (
+    <div>
+      <div className="filter-row">
+        {INBOX_STATUSES.map((s) => (
+          <button key={s.key} className={"filter-chip" + (activeFilter === s.key ? " active" : "")} onClick={() => setActiveFilter(s.key)}>{s.label}</button>
+        ))}
+      </div>
+      {loading ? <div className="empty"><div className="spinner"></div></div>
+       : error ? <div className="empty">⚠ {error}<div style={{ marginTop: 12 }}><button className="play-btn-secondary" onClick={onRetry}>↻ Retry</button></div></div>
+       : items.length === 0 ? (
+         <div className="empty">
+           <div className="empty-icon">📭</div>
+           No items with status "{activeFilter}".
+         </div>
+       ) : (
+         items.map((a) => <ItemRow key={a.page_id} a={a} onTriage={onTriage} onOpenReading={onOpenReading} />)
+       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// CAPTURES — deep links + inline flagged claims (mirrors player's pattern)
+// ═══════════════════════════════════════════════════════════════════════
+function CapturesScreen({ refreshKey, onRetry }) {
+  const [loading, setLoading] = useState(true);
+  const [errata, setErrata] = useState([]);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setError(null);
+    API.errataList()
+      .then((r) => { if (cancelled) return; setErrata((r.result && r.result.errata) || []); setLoading(false); })
+      .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [refreshKey]);
+
+  return (
+    <div>
+      <div className="section first">
+        <div className="section-icon">📂</div>
+        <div className="section-title">Open a ledger</div>
+      </div>
+      <div className="section-desc">Where the four other capture types live. Tap to curate or browse.</div>
+      <div className="card">
+        <a className="capture-link" href="/insights">
+          <span className="capture-link-icon">💡</span>
+          <div className="capture-link-text">
+            <div className="capture-link-name">Insights</div>
+            <div className="capture-link-desc">Approve or reject pending claims · the Insight Curation surface</div>
+          </div>
+          <span className="capture-link-arrow">→</span>
+        </a>
+        <a className="capture-link" href={NOTION_LINKS.oq} target="_blank" rel="noreferrer">
+          <span className="capture-link-icon">❓</span>
+          <div className="capture-link-text">
+            <div className="capture-link-name">Open questions</div>
+            <div className="capture-link-desc">In Notion · triage and answer queue</div>
+          </div>
+          <span className="capture-link-arrow">↗</span>
+        </a>
+        <a className="capture-link" href={NOTION_LINKS.gaps} target="_blank" rel="noreferrer">
+          <span className="capture-link-icon">🎓</span>
+          <div className="capture-link-text">
+            <div className="capture-link-name">Things to learn</div>
+            <div className="capture-link-desc">In Notion · pending learning-module series</div>
+          </div>
+          <span className="capture-link-arrow">↗</span>
+        </a>
+        <div className="capture-link">
+          <span className="capture-link-icon">📝</span>
+          <div className="capture-link-text">
+            <div className="capture-link-name">Research notes</div>
+            <div className="capture-link-desc">Standalone ledger artifact pending</div>
+          </div>
+          <span className="capture-link-arrow" style={{ color: "var(--ink-mute)" }}>soon</span>
+        </div>
+      </div>
+
+      <div className="section">
+        <div className="section-icon">🚩</div>
+        <div className="section-title">Flagged claims (inline)</div>
+        <div className="section-meta">{errata.length}</div>
+      </div>
+      <div className="section-desc">Claims flagged during playback. Click to jump back to the moment in the player.</div>
+      {loading ? <div className="empty"><div className="spinner"></div></div>
+       : error ? <div className="empty">⚠ {error}<div style={{ marginTop: 12 }}><button className="play-btn-secondary" onClick={onRetry}>↻ Retry</button></div></div>
+       : errata.length === 0 ? (
+         <div className="empty"><div className="empty-icon">💭</div>No flags yet. Tap 🚩 in the Commute Player while listening to flag a claim at the current moment.</div>
+       ) : (
+         errata.map((e) => (
+          <div key={e.id} className="card card-tap" onClick={() => window.open(`/uc3#mod=${e.module_id}&t=${e.timestamp_seconds}`, "_self")}>
+            <div className="row">
+              <div className="row-main">
+                <div className="row-title">{truncate(e.notes, 140)}</div>
+                <div className="row-sub">Module {e.module_id} · flagged at {fmtTime(e.timestamp_seconds || 0)} · {timeAgo(e.created_at)}</div>
+              </div>
+              <span className="row-chevron">↗</span>
+            </div>
+          </div>
+         ))
+       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════════════════════════════════
+function SettingsScreen({ onClearToken, onTokenUpdated, showToast }) {
+  const [tokenInput, setTokenInput] = useState("");
+  const tok = API.getToken();
+  const masked = tok ? tok.slice(0, 4) + "•".repeat(Math.max(4, tok.length - 8)) + tok.slice(-4) : "";
+
+  const saveToken = () => {
+    if (!tokenInput.trim()) return;
+    API.setToken(tokenInput.trim());
+    setTokenInput("");
+    onTokenUpdated && onTokenUpdated();
+  };
+
+  const clearCache = () => {
+    try {
+      const toRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("spacesc_") && k !== TOKEN_KEY) toRemove.push(k);
+      }
+      toRemove.forEach((k) => localStorage.removeItem(k));
+      showToast(`Cleared ${toRemove.length} cache entries`);
+    } catch (e) {
+      showToast("Cache clear failed: " + e.message);
+    }
+  };
+
+  return (
+    <div>
+      <div className="section first"><div className="section-title">API token</div></div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Current</div>
+          <div className="settings-val">{masked || "(not set)"}</div>
+          <input className="settings-input" type="password" placeholder="paste new bearer token"
+            value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} />
+          {tokenInput && <button className="settings-action" onClick={saveToken}>Save new token</button>}
+        </div>
+        <div className="settings-row">
+          <button className="settings-action danger" onClick={onClearToken}>Clear token + sign out</button>
+        </div>
+      </div>
+
+      <div className="section"><div className="section-title">Cache</div></div>
+      <div className="card">
+        <div className="settings-row">
+          <button className="settings-action" onClick={clearCache}>Clear local cache</button>
+          <div className="settings-val" style={{ marginTop: 4, color: "var(--ink-mute)", fontSize: 11 }}>Does not log you out.</div>
+        </div>
+      </div>
+
+      <div className="section"><div className="section-title">Reading workspace</div></div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Classic reading interface</div>
+          <a className="settings-action" href="/reading">Open /reading (list + detail + annotation + chat)</a>
+          <div className="settings-val" style={{ marginTop: 4, color: "var(--ink-mute)", fontSize: 11 }}>The full-page reader with corpus context. Opens in a new tab.</div>
+        </div>
+      </div>
+
+      <div className="section"><div className="section-title">About</div></div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Version</div>
+          <div className="settings-val">SpaceSC Desk · v2.0 · 2026-05-19</div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-label">Server</div>
+          <div className="settings-val">spacesc-mcp.75xnd2784n.workers.dev</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// APP ROOT
+// ═══════════════════════════════════════════════════════════════════════
+// Cross-surface tools list — mirrors player's SPACESC_TOOLS; desk is active here
+const SPACESC_TOOLS = [
+  { id: "commute",  name: "Commute",   desc: "Audio · listen + learn",          icon: "🎧", href: "/uc3" },
+  { id: "desk",     name: "Desk",      desc: "Today · inbox · captures",        icon: "🗂",  href: "/desk", active: true },
+  { id: "reading",  name: "Reading",   desc: "Deep read + annotation + chat",   icon: "📖", href: "/reading" },
+  { id: "corpus",   name: "Corpus",    desc: "Search the knowledge base",       icon: "🔍", href: "/corpus" },
+  { id: "insights", name: "Insights",  desc: "Approve or reject claims",        icon: "💎", href: "/insights" },
+  { id: "posture",  name: "Posture",   desc: "Three-domain balance",            icon: "📊", href: "/posture" },
+  { id: "pipeline", name: "Pipeline",  desc: "Ingestion health + errors",       icon: "🩺", href: "/pipeline" },
+  { id: "log",      name: "Build Log", desc: "What shipped, what's next",       icon: "📒", href: "/log" },
+  { id: "feedback", name: "Reports",   desc: "Your 🚩 captures + diagnoses",    icon: "🚩", href: "/feedback" },
+  { id: "map",      name: "System map", desc: "Five use cases · build tree",    icon: "🗺",  href: "/system-map" },
+];
+
+function NavMenu() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className={"nav-pill" + (open ? " open" : "")} onClick={() => setOpen(!open)} aria-label="Open SpaceSC navigation">
+        <span className="nav-pill-dot"></span>
+        <span>SpaceSC</span>
+        <span className="nav-pill-chev">▼</span>
+      </button>
+      {open && (
+        <>
+          <div className="nav-backdrop" onClick={() => setOpen(false)}></div>
+          <div className="nav-menu" role="dialog" aria-label="SpaceSC tools">
+            <div className="nav-menu-header">Jump to</div>
+            {SPACESC_TOOLS.map((tool) => (
+              <a key={tool.id}
+                className={"nav-menu-item" + (tool.active ? " active" : "")}
+                href={tool.href}
+                onClick={(e) => { if (tool.active) e.preventDefault(); setOpen(false); }}>
+                <span className="nav-menu-icon">{tool.icon}</span>
+                <span className="nav-menu-text">
+                  <div className="nav-menu-name">{tool.name}</div>
+                  <div className="nav-menu-desc">{tool.desc}</div>
+                </span>
+                {tool.active ? null : <span className="nav-menu-arrow">→</span>}
+              </a>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function App() {
+  const [authed, setAuthed] = useState(() => API.hasToken());
+  const [tab, setTab] = useState("today");
+  const [toast, setToast] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [queuedCount, setQueuedCount] = useState(null);
+
+  const showToast = useCallback((msg) => {
+    setToast({ id: Date.now(), msg });
+    setTimeout(() => setToast(null), 2400);
+  }, []);
+
+  const bumpRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  // Always-on footer count
+  useEffect(() => {
+    if (!authed) return;
+    let cancelled = false;
+    API.listParkingLot(["Retrieved"], 100)
+      .then((r) => { if (!cancelled) setQueuedCount((r.rows || []).length); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [authed, refreshKey]);
+
+  const onTriage = async (a, newStatus) => {
+    try {
+      await API.updateParkingLot(a.page_id, { Status: newStatus });
+      const msgs = {
+        "Retrieved": "Queued for your next drive",
+        "Retrieve Tomorrow": "Cowork will fetch the full text overnight",
+        "Ingest": "Flagged for ingestion",
+        "Listened": "Marked as listened",
+        "Skip": "Skipped",
+        "Done": "Marked done",
+      };
+      showToast(msgs[newStatus] || `Status → ${newStatus}`);
+      bumpRefresh();
+    } catch (e) {
+      showToast("Triage failed: " + e.message);
+    }
+  };
+
+  const onOpenReading = (a) => {
+    // Open the classic reading workspace in a new tab. Pre-loading state
+    // there is W2 — for now the user lands in its list view and clicks the
+    // item again. The two-click cost is the price of preserving the working
+    // reading view (per ADR-024 F4: patch, not redesign).
+    window.open("/reading", "_blank");
+  };
+
+  if (!authed) return <LoginPage onSaved={() => setAuthed(true)} />;
+
+  return (
+    <div className="app">
+      <NavMenu />
+      <div className="topbar">
+        <div className="topbar-title">Desk</div>
+        <div className="topbar-sub">SpaceSC · ingest & curation</div>
+        <button className="topbar-gear" onClick={() => bumpRefresh()} aria-label="Refresh">↻</button>
+        <button className="topbar-gear" onClick={() => setTab("settings")} aria-label="Settings">⚙</button>
+      </div>
+
+      <div className="tabs">
+        <button className={"tab" + (tab === "today" ? " active" : "")} onClick={() => setTab("today")}>🌅 Today</button>
+        <button className={"tab" + (tab === "inbox" ? " active" : "")} onClick={() => setTab("inbox")}>📭 Inbox</button>
+        <button className={"tab" + (tab === "captures" ? " active" : "")} onClick={() => setTab("captures")}>💭 Captures</button>
+        <button className={"tab" + (tab === "settings" ? " active" : "")} onClick={() => setTab("settings")}>⚙ Settings</button>
+      </div>
+
+      {tab === "today" && <TodayScreen refreshKey={refreshKey} onTriage={onTriage} onOpenReading={onOpenReading} onRetry={bumpRefresh} />}
+      {tab === "inbox" && <InboxScreen refreshKey={refreshKey} onTriage={onTriage} onOpenReading={onOpenReading} onRetry={bumpRefresh} />}
+      {tab === "captures" && <CapturesScreen refreshKey={refreshKey} onRetry={bumpRefresh} />}
+      {tab === "settings" && <SettingsScreen
+        onClearToken={() => { API.clearToken(); setAuthed(false); }}
+        onTokenUpdated={() => showToast("Token saved")}
+        showToast={showToast} />}
+
+      {/* Always-on queued-for-drive footer */}
+      {queuedCount !== null && (
+        <div className="drive-footer">
+          <div className="drive-footer-inner">
+            <div>
+              <div className="drive-footer-label">Queued for drive</div>
+              <div className="drive-footer-count">{queuedCount} item{queuedCount === 1 ? "" : "s"}</div>
+            </div>
+            <div className="drive-footer-sub">Articles you triaged to "Retrieved" — they'll play in priority order.</div>
+            <a className="drive-footer-link" href="/uc3">Open player →</a>
+          </div>
+        </div>
+      )}
+
+      {toast && <div className="toast" role="status" aria-live="polite">{toast.msg}</div>}
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>

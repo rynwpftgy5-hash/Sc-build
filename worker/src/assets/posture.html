@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SpaceSC Posture</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#faf9f5">
+<style>
+:root {
+  --bg: #faf9f5; --bg-elev: #ffffff; --bg-sunken: #f1efe8;
+  --ink: #1f1d18; --ink-soft: #56544c; --ink-mute: #888780;
+  --line: #e7e5dc; --line-strong: #d4d1c4;
+  --accent: #185fa5; --accent-warm: #854f0b; --green: #3b6d11; --red: #a32d2d; --purple: #534ab7;
+  --shadow: 0 1px 3px rgba(0,0,0,0.05); --shadow-rise: 0 4px 12px rgba(0,0,0,0.08);
+  --radius: 10px; --radius-lg: 16px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { background: var(--bg); color: var(--ink); }
+body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; font-size: 14px; line-height: 1.5; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+input, textarea, select { font: inherit; color: inherit; }
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.app { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+.topbar { display: flex; align-items: center; gap: 12px; padding: 16px 0 12px; border-bottom: 0.5px solid var(--line); margin-bottom: 14px; }
+.topbar-back { font-size: 22px; padding: 4px 8px; margin-left: -8px; color: var(--ink-soft); }
+.topbar-title { font-size: 20px; font-weight: 600; flex: 1; line-height: 1.25; min-width: 0; }
+.topbar-sub { font-size: 12px; color: var(--ink-mute); margin-left: 8px; }
+.topbar-gear { font-size: 18px; color: var(--ink-soft); padding: 4px 8px; }
+.filter-row { display: flex; gap: 6px; padding: 4px 0 12px; flex-wrap: wrap; }
+.filter-chip { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; color: var(--ink-soft); background: var(--bg-sunken); border: 0.5px solid var(--line); white-space: nowrap; }
+.filter-chip.active { background: var(--ink); color: var(--bg-elev); border-color: var(--ink); }
+.card { background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius-lg); margin-bottom: 10px; }
+
+/* KPI tile grid */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.kpi-tile { background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius-lg); padding: 16px; }
+.kpi-label { font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+.kpi-value { font-size: 28px; font-weight: 600; color: var(--ink); line-height: 1.1; }
+.kpi-sub { font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
+
+/* Section header */
+.section { margin: 20px 0 10px; display: flex; align-items: baseline; gap: 10px; }
+.section-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); flex: 1; }
+.section-meta { font-size: 12px; color: var(--ink-mute); }
+
+/* Domain bar chart (CSS-only) */
+.bar-row { display: grid; grid-template-columns: 130px 1fr 50px; gap: 10px; align-items: center; padding: 8px 0; }
+.bar-row + .bar-row { border-top: 0.5px solid var(--line); }
+.bar-label { font-size: 13px; color: var(--ink); font-weight: 500; }
+.bar-track { background: var(--bg-sunken); height: 10px; border-radius: 999px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 999px; transition: width .25s; }
+.bar-fill.policy        { background: var(--accent); }
+.bar-fill.economics     { background: var(--accent-warm); }
+.bar-fill.technology    { background: var(--purple); }
+.bar-fill.crosscutting  { background: var(--green); }
+.bar-fill.other         { background: var(--ink-mute); }
+.bar-count { font-size: 12px; color: var(--ink-soft); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Empty / loading / error / mac_offline */
+.empty { padding: 28px 16px; text-align: center; color: var(--ink-mute); font-size: 13px; }
+.spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--line); border-top-color: var(--ink-soft); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.mac-banner { background: rgba(133,79,11,.07); border: 0.5px solid var(--accent-warm); color: var(--ink-soft); border-radius: var(--radius); padding: 10px 14px; font-size: 12px; margin-bottom: 14px; line-height: 1.5; }
+
+/* Settings / Login / Toast */
+.settings-row { padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; }
+.settings-row + .settings-row { border-top: 0.5px solid var(--line); }
+.settings-label { font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.settings-val { font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-soft); }
+.settings-input { width: 100%; padding: 10px 12px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-family: ui-monospace, monospace; font-size: 13px; margin-top: 8px; }
+.settings-action { color: var(--accent); font-size: 14px; padding: 8px 0; background: none; border: none; }
+.settings-action.danger { color: var(--red); }
+.login-page { max-width: 360px; margin: 80px auto; padding: 24px; }
+.login-title { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+.login-sub { font-size: 13px; color: var(--ink-soft); margin-bottom: 18px; }
+.login-input { width: 100%; padding: 12px 14px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-size: 14px; font-family: ui-monospace, monospace; margin-bottom: 10px; }
+.login-btn { width: 100%; padding: 12px; border-radius: 8px; background: var(--ink); color: var(--bg-elev); font-size: 14px; font-weight: 600; border: none; }
+.toast { position: fixed; bottom: 28px; left: 50%; transform: translate(-50%, 0); background: var(--ink); color: var(--bg-elev); padding: 10px 16px; border-radius: 999px; font-size: 13px; box-shadow: var(--shadow-rise); z-index: 100; }
+
+/* NavMenu (mirrors other hand-coded surfaces) */
+.nav-pill { position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); z-index: 80; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px 7px 10px; background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); font-size: 12px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.nav-pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
+.nav-pill-chev { font-size: 10px; color: var(--ink-mute); transition: transform .2s; }
+.nav-pill.open .nav-pill-chev { transform: rotate(180deg); }
+.nav-backdrop { position: fixed; inset: 0; background: rgba(31,29,24,0.18); z-index: 79; }
+.nav-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 44px)); right: max(10px, env(safe-area-inset-right)); z-index: 80; width: min(280px, calc(100vw - 20px)); background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(31,29,24,0.18); overflow: hidden; }
+.nav-menu-header { padding: 10px 14px 8px; border-bottom: 0.5px solid var(--line); font-size: 10px; font-weight: 700; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; }
+.nav-menu-item { display: flex; align-items: center; gap: 10px; padding: 12px 14px; text-decoration: none; color: var(--ink); border-bottom: 0.5px solid var(--line); }
+.nav-menu-item:last-child { border-bottom: none; }
+.nav-menu-item.active { background: var(--ink); color: var(--bg-elev); }
+.nav-menu-icon { font-size: 18px; flex-shrink: 0; width: 26px; text-align: center; }
+.nav-menu-text { flex: 1; min-width: 0; }
+.nav-menu-name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.nav-menu-desc { font-size: 11px; color: var(--ink-mute); margin-top: 1px; }
+.nav-menu-item.active .nav-menu-desc { color: rgba(250,249,245,0.7); }
+.nav-menu-arrow { color: var(--ink-mute); font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useCallback, useMemo } = React;
+
+const BASE = "https://spacesc-mcp.75xnd2784n.workers.dev";
+const TOKEN_KEY = "spacesc_mcp_token";
+const THEME_KEY = "spacesc_theme";
+
+const API = {
+  getToken: () => { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (_) { return ""; } },
+  setToken: (t) => { try { localStorage.setItem(TOKEN_KEY, t); } catch (_) {} },
+  clearToken: () => { try { localStorage.removeItem(TOKEN_KEY); } catch (_) {} },
+  hasToken: () => !!API.getToken(),
+  async _readBody(r) { try { const t = await r.text(); try { return { json: JSON.parse(t), text: t }; } catch (_) { return { json: null, text: t }; } } catch (_) { return { json: null, text: "" }; } },
+  async _post(path, body, opts) {
+    const t = API.getToken();
+    if (!t) throw Object.assign(new Error("no token"), { code: "NO_TOKEN" });
+    const timeout = (opts && opts.timeout) || 30000;
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const r = await fetch(BASE + path, { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t }, body: JSON.stringify(body || {}), signal: ctrl.signal });
+      clearTimeout(tid);
+      if (r.status === 401 || r.status === 403) throw Object.assign(new Error("unauthorized"), { code: "AUTH" });
+      if (!r.ok) {
+        const b = await API._readBody(r);
+        // Be tolerant of mac_offline shape: error key or body containing the substring.
+        if (b.json && b.json.error === "mac_offline") throw Object.assign(new Error("mac_offline"), { code: "MAC_OFFLINE" });
+        if (b.text && b.text.includes("mac_offline")) throw Object.assign(new Error("mac_offline"), { code: "MAC_OFFLINE" });
+        throw Object.assign(new Error("HTTP " + r.status + ": " + (b.text || "").slice(0, 200)), { code: "HTTP_" + r.status });
+      }
+      return r.json();
+    } catch (e) {
+      clearTimeout(tid);
+      if (e.name === "AbortError") throw Object.assign(new Error("timeout"), { code: "TIMEOUT" });
+      throw e;
+    }
+  },
+  // Reuse /api/search to pull insights (include_pending=true returns both
+  // pending + approved). Larger limit so we have enough rows to bucket.
+  searchInsights: (q, includePending, limit) => API._post("/api/search", { query: q || " ", include_pending: !!includePending, limit: limit || 200 }, { timeout: 25000 }),
+};
+
+const DOMAIN_OPTIONS = ["Policy", "Economics", "Technology", "Cross-cutting"];
+const DOMAIN_BAR_CLASS = { "Policy": "policy", "Economics": "economics", "Technology": "technology", "Cross-cutting": "crosscutting" };
+const WINDOW_OPTIONS = [
+  { key: "30d",  label: "30 days", days: 30  },
+  { key: "90d",  label: "90 days", days: 90  },
+  { key: "1y",   label: "1 year",  days: 365 },
+  { key: "all",  label: "All",     days: null },
+];
+
+const SPACESC_TOOLS = [
+  { id: "commute",  name: "Commute",   desc: "Audio · listen + learn",          icon: "🎧", href: "/uc3" },
+  { id: "desk",     name: "Desk",      desc: "Today · inbox · captures",        icon: "🗂",  href: "/desk" },
+  { id: "reading",  name: "Reading",   desc: "Deep read + annotation",          icon: "📖", href: "/reading" },
+  { id: "corpus",   name: "Corpus",    desc: "Search the knowledge base",       icon: "🔍", href: "/corpus" },
+  { id: "insights", name: "Insights",  desc: "Approve or reject claims",        icon: "💎", href: "/insights" },
+  { id: "posture",  name: "Posture",   desc: "Three-domain balance",            icon: "📊", href: "/posture", active: true },
+  { id: "pipeline", name: "Pipeline",  desc: "Ingestion health + errors",       icon: "🩺", href: "/pipeline" },
+  { id: "log",      name: "Build Log", desc: "What shipped, what's next",       icon: "📒", href: "/log" },
+  { id: "feedback", name: "Reports",   desc: "Your 🚩 captures + diagnoses",    icon: "🚩", href: "/feedback" },
+  { id: "map",      name: "System map", desc: "Five use cases · build tree",    icon: "🗺",  href: "/system-map" },
+];
+
+function applyTheme(mode) {
+  const dark = mode === "dark" || (mode === "system" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const root = document.documentElement;
+  if (dark) {
+    root.style.setProperty("--bg", "#1f1d18"); root.style.setProperty("--bg-elev", "#2a2823"); root.style.setProperty("--bg-sunken", "#3a3833");
+    root.style.setProperty("--ink", "#faf9f5"); root.style.setProperty("--ink-soft", "#c4c2bb");
+    root.style.setProperty("--line", "#4a4843"); root.style.setProperty("--line-strong", "#5a5853");
+  } else {
+    ["--bg","--bg-elev","--bg-sunken","--ink","--ink-soft","--line","--line-strong"].forEach((p) => root.style.removeProperty(p));
+  }
+}
+try { applyTheme(localStorage.getItem(THEME_KEY) || "system"); } catch (_) {}
+
+function NavMenu() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className={"nav-pill" + (open ? " open" : "")} onClick={() => setOpen(!open)} aria-label="Open SpaceSC navigation">
+        <span className="nav-pill-dot"></span><span>SpaceSC</span><span className="nav-pill-chev">▼</span>
+      </button>
+      {open && (<>
+        <div className="nav-backdrop" onClick={() => setOpen(false)}></div>
+        <div className="nav-menu" role="dialog" aria-label="SpaceSC tools">
+          <div className="nav-menu-header">Jump to</div>
+          {SPACESC_TOOLS.map((tool) => (
+            <a key={tool.id} className={"nav-menu-item" + (tool.active ? " active" : "")} href={tool.href}
+              onClick={(e) => { if (tool.active) e.preventDefault(); setOpen(false); }}>
+              <span className="nav-menu-icon">{tool.icon}</span>
+              <span className="nav-menu-text"><div className="nav-menu-name">{tool.name}</div><div className="nav-menu-desc">{tool.desc}</div></span>
+              {tool.active ? null : <span className="nav-menu-arrow">→</span>}
+            </a>
+          ))}
+        </div>
+      </>)}
+    </>
+  );
+}
+
+function LoginPage({ onSaved }) {
+  const [val, setVal] = useState("");
+  const [err, setErr] = useState(null);
+  const [verifying, setVerifying] = useState(false);
+  const tryToken = async () => {
+    if (!val.trim()) return;
+    setVerifying(true); setErr(null);
+    API.setToken(val.trim());
+    try {
+      await API.searchInsights(" ", true, 1);
+      onSaved();
+    } catch (e) {
+      if (e.code === "AUTH") { API.clearToken(); setErr("Token rejected. Paste the right one."); }
+      else if (e.code === "MAC_OFFLINE") { onSaved(); /* Posture queries the Mac; let the dashboard show the banner. */ }
+      else { setErr("Saved, but couldn't reach the server (" + (e.message || "unknown") + "). Tap Save to retry."); }
+      setVerifying(false);
+    }
+  };
+  return (
+    <div className="app">
+      <div className="login-page">
+        <div className="login-title">SpaceSC Posture</div>
+        <div className="login-sub">Paste your bearer token to begin.</div>
+        <input className="login-input" type="password" placeholder="bearer token" value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") tryToken(); }} autoFocus />
+        {err && <div style={{ color: "var(--red)", fontSize: 13, marginTop: 10 }}>{err}</div>}
+        <button className="login-btn" onClick={tryToken} disabled={verifying}>{verifying ? "Verifying…" : "Save"}</button>
+      </div>
+    </div>
+  );
+}
+
+function PostureView({ refreshKey, onAuthLost }) {
+  const [windowKey, setWindowKey] = useState("30d");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [macOffline, setMacOffline] = useState(false);
+  const [insights, setInsights] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setError(null); setMacOffline(false);
+    API.searchInsights(" ", true, 200)
+      .then((r) => {
+        if (cancelled) return;
+        const all = r.results || r.insights || r.items || [];
+        setInsights(all);
+        setLoading(false);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        if (e.code === "AUTH") { onAuthLost && onAuthLost(); return; }
+        if (e.code === "MAC_OFFLINE") { setMacOffline(true); setInsights([]); }
+        else { setError(e.message); }
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [refreshKey]);
+
+  // Filter by window (created_at unix or ISO string; tolerant)
+  const filtered = useMemo(() => {
+    const w = WINDOW_OPTIONS.find((x) => x.key === windowKey);
+    if (!w || !w.days) return insights;
+    const cutoff = Date.now() - w.days * 86400 * 1000;
+    return insights.filter((i) => {
+      const ts = i.created_at_unix ? i.created_at_unix * 1000
+        : (i.created_at ? new Date(i.created_at).getTime() : null);
+      // Without a timestamp we can't place the insight in the window — exclude
+      // from finite windows so a "30d" view isn't silently flooded by undated
+      // legacy rows. (Earlier behavior was permissive; reviewer flagged it.)
+      if (!ts) return false;
+      return ts >= cutoff;
+    });
+  }, [insights, windowKey]);
+
+  // KPI buckets
+  const stats = useMemo(() => {
+    const total = filtered.length;
+    const approved = filtered.filter((i) => i.status === "approved").length;
+    const pending = filtered.filter((i) => (i.status || "pending") === "pending").length;
+    const hypothesis = filtered.filter((i) => (i.claim_type || "").toLowerCase() === "hypothesis").length;
+    const synthesis = filtered.filter((i) => (i.claim_type || "").toLowerCase() === "synthesis").length;
+    const framingShift = filtered.filter((i) => (i.claim_type || "").toLowerCase() === "framing-shift").length;
+    // Domain buckets
+    const domainCounts = DOMAIN_OPTIONS.reduce((acc, d) => { acc[d] = 0; return acc; }, { Other: 0 });
+    for (const i of filtered) {
+      const d = i.domain_primary || "Other";
+      if (DOMAIN_OPTIONS.includes(d)) domainCounts[d] += 1;
+      else domainCounts.Other += 1;
+    }
+    const domainMax = Math.max(1, ...Object.values(domainCounts));
+    return { total, approved, pending, hypothesis, synthesis, framingShift, domainCounts, domainMax };
+  }, [filtered]);
+
+  return (
+    <div>
+      <div className="filter-row" role="tablist" aria-label="Time window">
+        {WINDOW_OPTIONS.map((w) => (
+          <button key={w.key} className={"filter-chip" + (windowKey === w.key ? " active" : "")} onClick={() => setWindowKey(w.key)}>{w.label}</button>
+        ))}
+      </div>
+
+      {macOffline && (
+        <div className="mac-banner">⚠ The Insight Ledger lives on the Mac and the Mac is offline — KPIs reflect only locally-cached state (none, until next reach).</div>
+      )}
+
+      {loading ? <div className="empty"><div className="spinner"></div></div>
+       : error ? <div className="empty">⚠ {error}</div>
+       : (
+         <>
+           <div className="kpi-grid">
+             <div className="kpi-tile"><div className="kpi-label">Approved</div><div className="kpi-value">{stats.approved}</div><div className="kpi-sub">insights in window</div></div>
+             <div className="kpi-tile"><div className="kpi-label">Pending</div><div className="kpi-value">{stats.pending}</div><div className="kpi-sub">awaiting review</div></div>
+             <div className="kpi-tile"><div className="kpi-label">Hypotheses</div><div className="kpi-value">{stats.hypothesis}</div><div className="kpi-sub">open claim type</div></div>
+             <div className="kpi-tile"><div className="kpi-label">Syntheses</div><div className="kpi-value">{stats.synthesis}</div><div className="kpi-sub">cross-source</div></div>
+             <div className="kpi-tile"><div className="kpi-label">Framing shifts</div><div className="kpi-value">{stats.framingShift}</div><div className="kpi-sub">analytical reframes</div></div>
+             <div className="kpi-tile"><div className="kpi-label">Total</div><div className="kpi-value">{stats.total}</div><div className="kpi-sub">all in window</div></div>
+           </div>
+
+           <div className="section"><div className="section-title">Domain balance</div><div className="section-meta">{stats.total} insight{stats.total === 1 ? "" : "s"}</div></div>
+           <div className="card" style={{ padding: 16 }}>
+             {[...DOMAIN_OPTIONS, "Other"].map((d) => {
+               const count = stats.domainCounts[d] || 0;
+               const pct = stats.domainMax ? Math.round((count / stats.domainMax) * 100) : 0;
+               const cls = DOMAIN_BAR_CLASS[d] || "other";
+               return (
+                 <div key={d} className="bar-row">
+                   <div className="bar-label">{d}</div>
+                   <div className="bar-track"><div className={"bar-fill " + cls} style={{ width: (count === 0 ? 2 : pct) + "%" }}></div></div>
+                   <div className="bar-count">{count}</div>
+                 </div>
+               );
+             })}
+           </div>
+         </>
+       )}
+    </div>
+  );
+}
+
+function SettingsView({ onClearToken, showToast }) {
+  const [tokenInput, setTokenInput] = useState("");
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem(THEME_KEY) || "system"; } catch (_) { return "system"; } });
+  const masked = (() => { const t = API.getToken(); return t ? t.slice(0, 6) + "…" + t.slice(-4) : ""; })();
+  useEffect(() => { applyTheme(theme); try { localStorage.setItem(THEME_KEY, theme); } catch (_) {} }, [theme]);
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.05, color: "var(--ink-soft)", margin: "8px 0 10px" }}>API token</div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Current</div><div className="settings-val">{masked || "(not set)"}</div>
+          <input className="settings-input" type="password" placeholder="paste new bearer token" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} />
+          {tokenInput && <button className="settings-action" onClick={() => { API.setToken(tokenInput.trim()); setTokenInput(""); showToast && showToast("Token saved"); }}>Save new token</button>}
+        </div>
+        <div className="settings-row"><button className="settings-action danger" onClick={onClearToken}>Clear token + sign out</button></div>
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.05, color: "var(--ink-soft)", margin: "22px 0 10px" }}>Appearance</div>
+      <div className="card"><div className="settings-row"><div className="settings-label">Theme</div><div className="filter-row" style={{ marginTop: 8, paddingBottom: 0 }}>{["light","dark","system"].map((m) => <button key={m} className={"filter-chip" + (theme === m ? " active" : "")} onClick={() => setTheme(m)}>{m}</button>)}</div></div></div>
+      <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.05, color: "var(--ink-soft)", margin: "22px 0 10px" }}>About</div>
+      <div className="card">
+        <div className="settings-row"><div className="settings-label">Version</div><div className="settings-val">SpaceSC Posture · Phase 1 (KPIs + domain balance)</div></div>
+        <div className="settings-row"><div className="settings-label">Legacy v3 surface</div><div className="settings-val"><a href="/posture-v3-legacy" style={{ color: "var(--accent)", textDecoration: "none" }}>Open the v3 posture surface ↗</a><div style={{ fontSize: 11, color: "var(--ink-mute)", marginTop: 4 }}>Fallback if you need the original (velocity-over-time + open-hypothesis tracker). Will be retired after a soak.</div></div></div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [authed, setAuthed] = useState(() => API.hasToken());
+  const [view, setView] = useState("posture"); // posture | settings
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [toast, setToast] = useState(null);
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator !== "undefined" ? navigator.onLine !== false : true));
+  useEffect(() => {
+    const on = () => setIsOnline(true); const off = () => setIsOnline(false);
+    window.addEventListener("online", on); window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
+  const showToast = useCallback((msg) => { setToast({ id: Date.now(), msg }); setTimeout(() => setToast(null), 2400); }, []);
+  const onAuthLost = useCallback(() => { API.clearToken(); setAuthed(false); }, []);
+  if (!authed) return <LoginPage onSaved={() => setAuthed(true)} />;
+  return (
+    <>
+      <NavMenu />
+      {!isOnline && <div role="status" aria-live="polite" style={{ position: "sticky", top: 0, zIndex: 70, padding: "8px 12px", background: "rgba(133,79,11,.95)", color: "#fff", fontSize: 12, fontWeight: 500, textAlign: "center" }}>⚠ You're offline.</div>}
+      <div className="app">
+        {view === "settings" ? (
+          <div className="topbar"><button className="topbar-back" onClick={() => setView("posture")} aria-label="Close settings">×</button><div className="topbar-title">Settings</div></div>
+        ) : (
+          <div className="topbar"><div className="topbar-title">Posture</div><div className="topbar-sub">three-domain balance · phase 1</div><button className="topbar-gear" onClick={() => setRefreshKey((k) => k + 1)} aria-label="Refresh">↻</button><button className="topbar-gear" onClick={() => setView("settings")} aria-label="Settings">⚙</button></div>
+        )}
+        {view === "posture" && <PostureView refreshKey={refreshKey} onAuthLost={onAuthLost} />}
+        {view === "settings" && <SettingsView onClearToken={onAuthLost} showToast={showToast} />}
+      </div>
+      {toast && <div className="toast" role="status" aria-live="polite">{toast.msg}</div>}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

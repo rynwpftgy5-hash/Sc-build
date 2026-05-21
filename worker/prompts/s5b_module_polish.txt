@@ -1,0 +1,57 @@
+You are polishing a full learning module's transcript. The drafted beats
+were written by separate Anthropic calls and don't yet flow as one
+continuous spoken arc. Smooth voice + transitions + remove repetition,
+without changing any sourced claims or invalidating any citations.
+Output strict JSON only.
+
+## Module context
+
+Position in series:  <<MODULE_POSITION>> of <<TOTAL_MODULES>>
+Learning objective:  <<LEARNING_OBJECTIVE>>
+Audio rationale:     <<AUDIO_RATIONALE>>
+
+## Drafted beats (in order, from S5a)
+
+<<DRAFTED_BEATS_JSON>>
+
+Each entry has: section_type, position, draft_text, citations_used,
+estimated_seconds.
+
+## Polishing rules
+
+- **DO smooth transitions.** Add tight bridging sentences between beats
+  ("with that structure in mind…", "the next thing to watch for is…").
+  Bridges should not introduce new facts — only orient the listener.
+- **DO de-duplicate.** If two beats restate the same definition, leave
+  it in the FIRST occurrence and trim the second to a callback.
+- **DO unify register.** Voice should be consistent — same level of
+  formality, same energy, same listener-second-person stance.
+- **DO add pacing cues.** Half-second pauses (`…`), beat-internal
+  emphasis markers in ALL CAPS sparingly, listener-time signposts
+  ("about halfway through" / "last topic before we wrap").
+- **DO preserve all citations.** Every `citations_used` entry from the
+  input beats MUST be carried through to your output. If you trim a
+  beat, keep its citations. If you re-phrase an in-line source mention,
+  preserve the source_name match.
+- **DO NOT rewrite claims.** If a beat says "ASC 606 requires X",
+  your output must still say "ASC 606 requires X" (or the exact same
+  factual content). Wording can change; meaning cannot.
+- **DO NOT exceed the original total estimated_seconds + 60s buffer.**
+  The S4 ceiling was 720s; the polished module must still fit.
+
+## Output (JSON only)
+
+{
+  "polished_transcript": "<the full spoken module, beats merged with
+                          your bridges, ready to send to TTS>",
+  "citations": [
+    {
+      "source_name": "...",
+      "url": "...",
+      "first_used_at_seconds": <approximate clock position of first mention>
+    }
+  ],
+  "estimated_total_seconds": <int — must be <= sum(input beats) + 60>,
+  "polish_notes": "<2-3 sentences on what changed: bridges added,
+                   duplicates trimmed, register adjustments>"
+}

@@ -40,9 +40,51 @@ Things that intentionally do NOT live in this repo:
 
 ## How (build conventions)
 
+- **Session opener — feedback inbox + blindspots** (§8.4a.25). On every
+  Claude Code session that touches SpaceSC UI surfaces, **first** call the
+  two MCP tools:
+  1. `search_feedback({ status: "open" })` — Campbell's 🚩 inbox across
+     /uc3, /desk, /reading, /corpus, /insights, /posture, /pipeline, /log,
+     /system-map. Each item has the surface, view state at capture, type
+     (bug/confusion/feature/question), and notes. Address these *before* he
+     has to remember and re-explain.
+  2. `list_open_blindspots()` — the adversarial UAT register. Each open
+     row is a check our ADR-024 self-audit missed when Campbell had to
+     report something. Per ADR-024 Part 3.5, the pre-deploy gate requires
+     every blindspot in the touched-surface scope to be resolved (applied
+     into the F-register or rejected with rationale) before declaring done.
+  These two calls cost a few hundred ms total. The cost of skipping them is
+  Campbell's context switch when he has to re-explain what he already
+  reported.
 - **Plan-mode discipline at every pause-for-Campbell gate** (per ADR-005
   once authored). Long-running or structural changes propose before they
   execute; the gate exists so the human review surface stays narrow.
+- **UI build discipline** (per [ADR-024](docs/adr/0024-ui-build-discipline.md)).
+  Before any work that touches a user-facing surface, follow the four-part
+  protocol — verbatim, in order:
+  1. **Charter + Persona + thinking template** (Part 1). State a
+     one-sentence charter (*"explore X with Y to discover whether the user
+     can reach end-state Z"*). Name the persona being tested as
+     (commute Campbell / desk Campbell). Then answer the six framing
+     questions. Fetch the live system map at
+     <https://spacesc-mcp.75xnd2784n.workers.dev/system-map> to identify
+     which use case owns the work.
+  2. **Self-audit checklist** (Part 2) — three sub-parts: integrity
+     checks (10), tours (Feature / Money / Landmark / Back-alley /
+     Saboteur / All-nighter / Garbage-collector — pick deliberately),
+     SFDIPOT coverage walk, and oracles (Claims + Purpose load-bearing).
+     Find issues and fix them in the same turn; do not surface a bug list
+     as a decision for the user.
+  3. **Past-failure register** (Part 3) — scan F1–F14 for repeating
+     patterns.
+  4. **Session debrief** (Part 4) — paste the structured debrief block
+     at the end of the turn. The "User-outcome reach" line is
+     load-bearing: *reached / partially reached / blocked.*
+
+  The discipline exists because UI work in this repo has historically
+  regressed across iterations when these steps were skipped, and because
+  *"tests pass"* is not the same as *"the user actually completed the
+  thing they came to do."*
 - **§8.11 Always-On Architecture Principle**: cloud-side substrate by
   default. New capabilities live on Cloudflare Workers, not on a laptop
   that has to be awake. Local-only components are a last resort and
@@ -62,6 +104,31 @@ Things that intentionally do NOT live in this repo:
   is the topic-organized field manual. §1–§11 cover the recurring shapes
   of work (ingestion, RAG, voice, deploys, etc.); consult the matching
   section before reinventing a pattern.
+- **UC3 player contracts** (load-bearing, post-2026-05-19 polish):
+  - `/api/uc3/pipeline-status` emits per-module `audio_r2_key`, `voice_id`,
+    `audio_last_error`, `audio_attempts_count`, `audio_last_attempt_at`,
+    plus `notion_page_id` at top level. UI consumers depend on the
+    failure-state trio for the F14 surface.
+  - `/api/uc3/list-briefs-ready` is the batched home-screen query —
+    replaces N-round-trip pipeline-status loop. Returns `brief_audio_bytes`
+    so the client can estimate duration (eleven_multilingual_v2 ~128kbps,
+    16 KB/s).
+  - `/api/uc3/captures-today` aggregates errata + Notion gaps + Notion OQs
+    over the last 24h. Insights and RNs land on the Mac-side il-server
+    and are *not* yet in this endpoint — see deep links in the player's
+    Captures tab.
+  - `/api/uc3/module-tts` accepts `{ async: true }` to queue via
+    MODULE_TTS_QUEUE and return 202 immediately; default sync mode is
+    retained for debug paths. The player's retry button uses async mode.
+  - `navigator.mediaSession` is wired at App level so iOS lock screen +
+    Control Center drive play/pause/seek. Don't dismantle without keeping
+    that flow whole.
+  - `localStorage.spacesc_tracking_gaps` persists the gap-capture pipeline
+    tracker across reloads; auto-prunes at 24h.
+- **ADR-024 failure register** is currently at F1–F14. F13 ("tests pass" ≠
+  user-outcome reach) and F14 (polled positive-signal-only state) are the
+  most recently added; both came from the UC3 player. Scan before any UI
+  build.
 
 ## Progressive disclosure (read on demand)
 

@@ -1,0 +1,127 @@
+You are writing a ~4-6 minute audio review brief for a single learning
+module. The listener will hear this on a commute BEFORE deciding whether
+to listen to the full ~10-minute module. The brief is honest, audio-native,
+and helps them decide: approve, request revision, or skip.
+
+Output strict JSON only.
+
+## Module context
+
+Position in series:  <<MODULE_POSITION>> of <<TOTAL_MODULES>>
+Learning objective:  <<LEARNING_OBJECTIVE>>
+
+## Polished module transcript
+
+<<POLISHED_TRANSCRIPT>>
+
+## Citations used in the module
+
+<<CITATIONS_JSON>>
+
+## Analogs that advanced to drafting (may be empty)
+
+<<ANALOGS_JSON>>
+
+## Corpus snippets the listener likely engaged with
+
+<<CORPUS_SNIPPETS_JSON>>
+
+## S6 per-claim verification trail
+
+<<S6_TRAIL_JSON>>
+
+## S7 holistic judge verdict + rationale
+
+S7 verdict: <<S7_VERDICT>>
+S7 rationale: <<S7_RATIONALE>>
+
+## Brief structure — 5 segments, ~4-6 min total
+
+Write five segments. Each segment is spoken audio (160 wpm ≈ 2.7 words/sec).
+Target seconds per segment are guides, not strict caps; the TOTAL should land
+within 240-360 seconds.
+
+1. **sources_audit (~45s)** — Name 3-4 primary sources the module draws
+   from. One short sentence per source on why each is trustworthy for this
+   topic (regulator / standards body / peer-reviewed / etc.). Lead with
+   the source the listener will recognize most.
+
+2. **outline_preview (~75s)** — Walk the listener through the module's
+   arc. Hook one-liner → core claim → name the sub-concept titles in
+   sequence → integration → end with "and you'll wrap with N self-checks
+   to test what stuck." Audio-native, not a table of contents read aloud.
+
+3. **corpus_connections (~30s)** — Name 1-2 items from the listener's
+   corpus that this module connects to (article titles or sources they've
+   read). If CORPUS_SNIPPETS_JSON is empty or the connections are weak,
+   say so honestly ("this module doesn't lean heavily on your prior
+   reading — it's foundational material").
+
+4. **high_stakes_claims (~90s)** — Surface 2-3 most consequential factual
+   claims the module makes, each WITH its cited source named inline.
+   These are the claims a listener should evaluate critically.
+
+   **If S7_VERDICT is `revise` or `reject`**, this segment MUST honestly
+   flag the specific defects S7_RATIONALE names. Don't oversell a flawed
+   module. Example phrasing: "Heads-up: the verification pass flagged
+   that the module attributes X to the CFA Institute — that attribution
+   couldn't be verified. Worth keeping in mind when you hear that section."
+
+   **If any S6 claims are still flagged as needs_human_review**, surface
+   the most material one with the same heads-up framing.
+
+5. **sample_clip (~60s)** — Verbatim ~150-word excerpt from the MIDDLE of
+   the module transcript. Pick a passage from the middle sub-concept beat
+   that sounds good standalone — a beat with a clear hook, not a
+   transition. DO NOT paraphrase; copy the prose exactly.
+
+## Drafting rules
+
+- **Audio-native register.** Same conversational, listener-second-person
+  voice as the full module. Pacing cues ("here's the key bit", "about
+  halfway through"). No headers read aloud.
+- **In-line source naming.** "Per the SEC's 2024 staff guidance…" not
+  "according to one source." Same convention as the module itself.
+- **No new facts.** The brief draws only from the transcript + S6/S7
+  trail + citations. Don't invent context.
+- **Honest about defects.** If S7 said revise, the brief says so plainly
+  in the high-stakes-claims segment. The listener decides; don't decide
+  for them by hiding flaws.
+- **No marketing language.** No "you'll love this," "incredibly important,"
+  or "everyone should know." Just orient the listener and let them choose.
+
+## Output (JSON only — no prose before or after)
+
+{
+  "segments": [
+    {
+      "label": "sources_audit",
+      "seconds": <int>,
+      "text": "<spoken text — one continuous paragraph for this segment>"
+    },
+    {
+      "label": "outline_preview",
+      "seconds": <int>,
+      "text": "..."
+    },
+    {
+      "label": "corpus_connections",
+      "seconds": <int>,
+      "text": "..."
+    },
+    {
+      "label": "high_stakes_claims",
+      "seconds": <int>,
+      "text": "..."
+    },
+    {
+      "label": "sample_clip",
+      "seconds": <int>,
+      "text": "<verbatim ~150-word excerpt from the middle of POLISHED_TRANSCRIPT>"
+    }
+  ],
+  "concatenated_script": "<full spoken brief — all 5 segments merged with brief one-line transitions between them ('Quick walk through the arc.' / 'Where this connects to what you've read.' / 'Two claims worth scrutinizing.' / 'And to hear how it actually sounds — here's a sample from the middle.'). This is what gets sent to TTS.>",
+  "estimated_total_seconds": <int — sum of segments + ~10s buffer>,
+  "honest_framing_note": "<one sentence on whether this brief flags any defects per S7 verdict; empty string if S7 approved>",
+  "synthesis_notes": "<1-2 sentences on which sources you led with and why, which sample clip you picked and why>"
+}

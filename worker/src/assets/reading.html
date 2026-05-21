@@ -1,0 +1,1301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SpaceSC Reading</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#faf9f5">
+<style>
+/* Palette mirrors /uc3 + /desk */
+:root {
+  --bg: #faf9f5;
+  --bg-elev: #ffffff;
+  --bg-sunken: #f1efe8;
+  --ink: #1f1d18;
+  --ink-soft: #56544c;
+  --ink-mute: #888780;
+  --line: #e7e5dc;
+  --line-strong: #d4d1c4;
+  --accent: #185fa5;
+  --accent-warm: #854f0b;
+  --green: #3b6d11;
+  --red: #a32d2d;
+  --purple: #534ab7;
+  --shadow: 0 1px 3px rgba(0,0,0,0.05);
+  --shadow-rise: 0 4px 12px rgba(0,0,0,0.08);
+  --radius: 10px;
+  --radius-lg: 16px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { background: var(--bg); color: var(--ink); }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.5;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+input, textarea, select { font: inherit; color: inherit; }
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.app { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+/* Topbar */
+.topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 0 12px;
+  border-bottom: 0.5px solid var(--line);
+  margin-bottom: 14px;
+}
+.topbar-back { font-size: 22px; padding: 4px 8px; margin-left: -8px; color: var(--ink-soft); }
+.topbar-title { font-size: 20px; font-weight: 600; flex: 1; line-height: 1.25; min-width: 0; }
+.topbar-title-detail { font-size: 17px; font-weight: 600; flex: 1; line-height: 1.3; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-sub { font-size: 12px; color: var(--ink-mute); margin-left: 8px; }
+.topbar-gear { font-size: 18px; color: var(--ink-soft); padding: 4px 8px; }
+
+/* Filter chips */
+.filter-row { display: flex; gap: 6px; padding: 4px 0 12px; overflow-x: auto; flex-wrap: wrap; }
+.filter-chip { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; color: var(--ink-soft); background: var(--bg-sunken); border: 0.5px solid var(--line); white-space: nowrap; }
+.filter-chip.active { background: var(--ink); color: var(--bg-elev); border-color: var(--ink); }
+
+/* Search input */
+.search-input { width: 100%; padding: 10px 14px; border-radius: 999px; border: 0.5px solid var(--line); background: var(--bg-sunken); font-size: 14px; margin-bottom: 14px; color: var(--ink); }
+
+/* Card */
+.card { background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius-lg); margin-bottom: 10px; }
+.card-tap { cursor: pointer; }
+.card-tap:hover { border-color: var(--line-strong); }
+
+.row { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; }
+.row-main { flex: 1; min-width: 0; }
+.row-title { font-size: 14px; font-weight: 500; line-height: 1.35; }
+.row-sub { font-size: 12px; color: var(--ink-soft); margin-top: 3px; }
+.row-meta { font-size: 11px; color: var(--ink-mute); margin-top: 4px; }
+.row-chevron { color: var(--ink-mute); font-size: 16px; align-self: center; }
+
+/* Chips on cards */
+.card-chips { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; background: var(--bg-sunken); color: var(--ink-soft); border: 0.5px solid var(--line); }
+.chip-p1 { color: var(--red); border-color: var(--red); background: rgba(163,45,45,.07); }
+
+/* Status badges */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 12px; font-size: 11px; font-weight: 500; border: 0.5px solid; }
+.badge-new       { color: var(--accent);      border-color: var(--accent);      background: rgba(24,95,165,.07); }
+.badge-retrieve  { color: var(--purple);      border-color: var(--purple);      background: rgba(83,74,183,.07); }
+.badge-retrieved { color: var(--accent-warm); border-color: var(--accent-warm); background: rgba(133,79,11,.07); }
+.badge-listened  { color: var(--green);       border-color: var(--green);       background: rgba(59,109,17,.07); }
+.badge-ingest    { color: var(--green);       border-color: var(--green);       background: rgba(59,109,17,.07); }
+.badge-insight   { color: var(--accent);      border-color: var(--accent);      background: rgba(24,95,165,.07); }
+.badge-done      { color: var(--ink-mute);    border-color: var(--line-strong); background: var(--bg-sunken); }
+.badge-skip      { color: var(--ink-mute);    border-color: var(--line-strong); background: var(--bg-sunken); }
+
+/* Empty / loading */
+.empty { padding: 40px 20px; text-align: center; color: var(--ink-mute); font-size: 13px; }
+.empty-icon { font-size: 32px; opacity: .5; margin-bottom: 8px; }
+.spinner {
+  display: inline-block; width: 18px; height: 18px;
+  border: 2px solid var(--line); border-top-color: var(--ink-soft); border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Detail layout */
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .detail-grid { grid-template-columns: minmax(0, 1fr); }
+  .annotation-panel { position: static !important; }
+}
+
+/* Article body */
+.article-body { background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius-lg); padding: 26px 28px; }
+.article-title { font-size: 22px; font-weight: 600; line-height: 1.3; margin-bottom: 6px; }
+.article-source { font-size: 13px; color: var(--ink-soft); margin-bottom: 18px; }
+.article-source a { color: var(--accent); text-decoration: none; }
+.article-source a:hover { text-decoration: underline; }
+.article-content { font-size: 15px; line-height: 1.65; color: var(--ink); }
+.article-content p { margin: 0 0 14px 0; }
+.article-content p:last-child { margin-bottom: 0; }
+.article-content-missing { font-size: 13px; color: var(--ink-mute); font-style: italic; padding: 24px 0; }
+
+/* Annotation panel */
+.annotation-panel { position: sticky; top: 16px; background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius-lg); padding: 20px; }
+.annotation-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 0.5px solid var(--line); }
+.annotation-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); flex: 1; }
+.save-indicator { font-size: 11px; color: var(--ink-mute); display: inline-flex; align-items: center; gap: 4px; }
+.save-indicator.saving { color: var(--accent); }
+.save-indicator.saved { color: var(--green); }
+.save-indicator.error { color: var(--red); }
+
+.field-group { margin-bottom: 16px; }
+.field-group:last-child { margin-bottom: 0; }
+.field-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-mute); margin-bottom: 6px; }
+.field-select {
+  width: 100%; padding: 8px 12px; border-radius: 8px;
+  background: var(--bg-sunken); border: 0.5px solid var(--line);
+  font-size: 13px; color: var(--ink);
+  appearance: none; -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-mute) 50%), linear-gradient(135deg, var(--ink-mute) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 14px, calc(100% - 11px) 14px;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+.field-textarea {
+  width: 100%; min-height: 90px; padding: 10px 12px;
+  border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line);
+  font-size: 13px; line-height: 1.5; color: var(--ink); resize: vertical;
+}
+.chip-toggles { display: flex; gap: 4px; flex-wrap: wrap; }
+.chip-toggle {
+  padding: 4px 10px; border-radius: 12px; font-size: 11px;
+  background: var(--bg-sunken); color: var(--ink-soft); border: 0.5px solid var(--line);
+  cursor: pointer;
+}
+.chip-toggle.selected { background: var(--ink); color: var(--bg-elev); border-color: var(--ink); }
+
+/* Detail footer actions (mobile nav) */
+.detail-actions { display: flex; gap: 8px; margin-top: 16px; }
+.action-btn {
+  flex: 1; padding: 10px 14px;
+  border-radius: 999px; font-size: 13px; font-weight: 500;
+  background: var(--bg-sunken); color: var(--ink); border: 0.5px solid var(--line);
+}
+.action-btn.primary { background: var(--ink); color: var(--bg-elev); border-color: var(--ink); }
+
+/* Settings (mirrors desk/player) */
+.settings-row { padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; }
+.settings-row + .settings-row { border-top: 0.5px solid var(--line); }
+.settings-label { font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.settings-val { font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-soft); }
+.settings-input { width: 100%; padding: 10px 12px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-family: ui-monospace, monospace; font-size: 13px; margin-top: 8px; }
+.settings-action { color: var(--accent); font-size: 14px; padding: 8px 0; background: none; border: none; }
+.settings-action.danger { color: var(--red); }
+
+/* Login */
+.login-page { max-width: 360px; margin: 80px auto; padding: 24px; }
+.login-title { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+.login-sub { font-size: 13px; color: var(--ink-soft); margin-bottom: 18px; }
+.login-input { width: 100%; padding: 12px 14px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-size: 14px; font-family: ui-monospace, monospace; margin-bottom: 10px; }
+.login-btn { width: 100%; padding: 12px; border-radius: 8px; background: var(--ink); color: var(--bg-elev); font-size: 14px; font-weight: 600; border: none; }
+
+/* Toast */
+.toast { position: fixed; bottom: 28px; left: 50%; transform: translate(-50%, 0); background: var(--ink); color: var(--bg-elev); padding: 10px 16px; border-radius: 999px; font-size: 13px; box-shadow: var(--shadow-rise); z-index: 100; }
+
+/* Cross-surface NavMenu — mirrors desk + player */
+.nav-pill { position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); z-index: 80; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px 7px 10px; background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); font-size: 12px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.nav-pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
+.nav-pill-chev { font-size: 10px; color: var(--ink-mute); transition: transform .2s; }
+.nav-pill.open .nav-pill-chev { transform: rotate(180deg); }
+.nav-backdrop { position: fixed; inset: 0; background: rgba(31,29,24,0.18); z-index: 79; }
+.nav-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 44px)); right: max(10px, env(safe-area-inset-right)); z-index: 80; width: min(280px, calc(100vw - 20px)); background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(31,29,24,0.18); overflow: hidden; }
+.nav-menu-header { padding: 10px 14px 8px; border-bottom: 0.5px solid var(--line); font-size: 10px; font-weight: 700; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; }
+.nav-menu-item { display: flex; align-items: center; gap: 10px; padding: 12px 14px; text-decoration: none; color: var(--ink); border-bottom: 0.5px solid var(--line); }
+.nav-menu-item:last-child { border-bottom: none; }
+.nav-menu-item.active { background: var(--ink); color: var(--bg-elev); }
+.nav-menu-icon { font-size: 18px; flex-shrink: 0; width: 26px; text-align: center; }
+.nav-menu-text { flex: 1; min-width: 0; }
+.nav-menu-name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.nav-menu-desc { font-size: 11px; color: var(--ink-mute); margin-top: 1px; }
+.nav-menu-item.active .nav-menu-desc { color: rgba(250,249,245,0.7); }
+.nav-menu-arrow { color: var(--ink-mute); font-size: 12px; }
+
+/* Phase 1 hint banner — kept as a fallback link to v3 even after Phase 2 lands */
+.phase-banner { background: rgba(133,79,11,.07); border: 0.5px solid var(--accent-warm); border-radius: var(--radius); padding: 10px 14px; font-size: 12px; color: var(--ink-soft); margin-bottom: 14px; }
+.phase-banner a { color: var(--accent); text-decoration: none; }
+.phase-banner a:hover { text-decoration: underline; }
+
+/* Phase 2: Research session chat sheet — overlay on the right (desktop) /
+   full-screen (mobile). Mirrors the player's sheet pattern. */
+.chat-fab {
+  position: fixed; bottom: 24px; right: 24px; z-index: 90;
+  background: var(--accent); color: var(--bg-elev);
+  width: 56px; height: 56px; border-radius: 50%;
+  font-size: 22px; box-shadow: var(--shadow-rise);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.chat-sheet-backdrop { position: fixed; inset: 0; background: rgba(31,29,24,0.32); z-index: 95; }
+.chat-sheet {
+  position: fixed; bottom: 0; right: 0; z-index: 96;
+  width: min(520px, 100vw); height: min(100vh, 92vh);
+  background: var(--bg-elev); border-left: 0.5px solid var(--line);
+  border-top-left-radius: 18px;
+  display: flex; flex-direction: column;
+  box-shadow: -8px 0 30px rgba(31,29,24,0.12);
+}
+@media (max-width: 600px) { .chat-sheet { width: 100vw; border-top-right-radius: 18px; } }
+.chat-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 0.5px solid var(--line); }
+.chat-head-title { flex: 1; font-size: 14px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-head-close { font-size: 20px; color: var(--ink-soft); padding: 4px 8px; }
+
+.chat-context { padding: 10px 16px; border-bottom: 0.5px solid var(--line); background: var(--bg-sunken); font-size: 12px; color: var(--ink-soft); }
+.chat-context summary { cursor: pointer; user-select: none; outline: none; }
+.chat-context-list { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; }
+.chat-context-item { padding: 6px 8px; background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 6px; font-size: 11px; line-height: 1.4; }
+.chat-context-title { font-weight: 600; color: var(--ink); margin-bottom: 2px; }
+
+.chat-body { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.chat-msg { padding: 10px 12px; border-radius: 12px; max-width: 90%; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+.chat-msg-user { align-self: flex-end; background: var(--accent); color: var(--bg-elev); border-bottom-right-radius: 4px; }
+.chat-msg-assistant { align-self: flex-start; background: var(--bg-sunken); color: var(--ink); border-bottom-left-radius: 4px; }
+.chat-msg-thinking { align-self: flex-start; background: transparent; color: var(--ink-mute); font-style: italic; padding: 6px 12px; }
+.chat-empty { padding: 24px 8px; text-align: center; color: var(--ink-mute); font-size: 13px; line-height: 1.5; }
+
+.chat-input-row { display: flex; gap: 8px; padding: 10px 14px; border-top: 0.5px solid var(--line); align-items: flex-end; }
+.chat-input { flex: 1; min-height: 38px; max-height: 140px; padding: 8px 12px; border-radius: 16px; border: 0.5px solid var(--line); background: var(--bg-sunken); font-size: 14px; line-height: 1.4; resize: none; color: var(--ink); }
+.chat-send { padding: 8px 16px; border-radius: 999px; background: var(--ink); color: var(--bg-elev); font-size: 13px; font-weight: 600; }
+.chat-send:disabled { background: var(--line-strong); color: var(--ink-mute); cursor: not-allowed; }
+
+.chat-capture-row { display: flex; gap: 6px; padding: 8px 14px 14px; border-top: 0.5px solid var(--line); }
+.chat-capture-btn {
+  flex: 1; padding: 9px 8px; border-radius: 999px;
+  background: var(--bg-sunken); color: var(--ink); border: 0.5px solid var(--line);
+  font-size: 12px; font-weight: 500;
+}
+.chat-capture-btn:hover { border-color: var(--line-strong); }
+.chat-capture-icon { margin-right: 4px; }
+
+/* Capture sub-sheet — small modal over the chat sheet for typing a capture */
+.capture-sub-backdrop { position: fixed; inset: 0; background: rgba(31,29,24,0.48); z-index: 100; display: flex; align-items: flex-end; justify-content: center; }
+@media (min-width: 600px) { .capture-sub-backdrop { align-items: center; } }
+.capture-sub {
+  background: var(--bg-elev); border-radius: 18px 18px 0 0; padding: 20px;
+  width: 100%; max-width: 560px;
+  box-shadow: 0 -10px 40px rgba(31,29,24,0.2);
+}
+@media (min-width: 600px) { .capture-sub { border-radius: 18px; } }
+.capture-sub-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.capture-sub-sub { font-size: 12px; color: var(--ink-mute); margin-bottom: 12px; }
+.capture-sub-input { width: 100%; min-height: 100px; padding: 10px 12px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-size: 14px; line-height: 1.5; color: var(--ink); resize: vertical; }
+.capture-sub-buttons { display: flex; gap: 8px; margin-top: 12px; }
+.capture-sub-btn-sec { flex: 1; padding: 10px; border-radius: 999px; background: var(--bg-sunken); color: var(--ink); border: 0.5px solid var(--line); font-size: 13px; }
+.capture-sub-btn-pri { flex: 1; padding: 10px; border-radius: 999px; background: var(--ink); color: var(--bg-elev); border: none; font-size: 13px; font-weight: 600; }
+.capture-sub-btn-pri:disabled { background: var(--line-strong); color: var(--ink-mute); cursor: not-allowed; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// API LAYER — mirrors /uc3 + /desk
+const BASE = "https://spacesc-mcp.75xnd2784n.workers.dev";
+const TOKEN_KEY = "spacesc_mcp_token";
+
+const API = {
+  getToken: () => { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (_) { return ""; } },
+  setToken: (t) => { try { localStorage.setItem(TOKEN_KEY, t); } catch (_) {} },
+  clearToken: () => { try { localStorage.removeItem(TOKEN_KEY); } catch (_) {} },
+  hasToken: () => !!API.getToken(),
+
+  async _readBody(r) {
+    try { const t = await r.text(); try { return { json: JSON.parse(t), text: t }; } catch (_) { return { json: null, text: t }; } } catch (_) { return { json: null, text: "" }; }
+  },
+  async _get(path, opts) {
+    const t = API.getToken();
+    if (!t) throw Object.assign(new Error("no token"), { code: "NO_TOKEN" });
+    const timeout = (opts && opts.timeout) || 30000;
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const r = await fetch(BASE + path, { headers: { Authorization: "Bearer " + t }, signal: ctrl.signal });
+      clearTimeout(tid);
+      if (r.status === 401 || r.status === 403) throw Object.assign(new Error("unauthorized"), { code: "AUTH" });
+      if (!r.ok) { const b = await API._readBody(r); throw Object.assign(new Error("HTTP " + r.status + ": " + (b.text || "").slice(0, 200)), { code: "HTTP_" + r.status }); }
+      return r.json();
+    } catch (e) {
+      clearTimeout(tid);
+      if (e.name === "AbortError") throw Object.assign(new Error("timeout"), { code: "TIMEOUT" });
+      throw e;
+    }
+  },
+  async _post(path, body, opts) {
+    const t = API.getToken();
+    if (!t) throw Object.assign(new Error("no token"), { code: "NO_TOKEN" });
+    const timeout = (opts && opts.timeout) || 30000;
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const r = await fetch(BASE + path, { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t }, body: JSON.stringify(body || {}), signal: ctrl.signal });
+      clearTimeout(tid);
+      if (r.status === 401 || r.status === 403) throw Object.assign(new Error("unauthorized"), { code: "AUTH" });
+      if (!r.ok) { const b = await API._readBody(r); throw Object.assign(new Error("HTTP " + r.status + ": " + (b.text || "").slice(0, 200)), { code: "HTTP_" + r.status }); }
+      return r.json();
+    } catch (e) {
+      clearTimeout(tid);
+      if (e.name === "AbortError") throw Object.assign(new Error("timeout"), { code: "TIMEOUT" });
+      throw e;
+    }
+  },
+
+  listParkingLot: (statuses, limit) => API._post("/api/parking-lot-list", { status_filter: statuses, sort: "priority_then_email", limit: limit || 60 }),
+  getArticle: (page_id) => API._post("/api/article", { page_id }),
+  updateParkingLot: (page_id, properties) => API._post("/api/parking-lot-update", { page_id, properties }),
+  // Phase 2: Research Session — corpus query + Sonnet chat + 3 capture types.
+  queryCorpus: (query, limit) => API._post("/api/query", { query, limit: limit || 5 }, { timeout: 25000 }),
+  chat: (system, messages) => API._post("/api/chat", { system, messages }, { timeout: 60000 }),
+  captureInsight: (body) => API._post("/api/capture", body),
+  captureRn: (body) => API._post("/api/rn-capture", body),
+  captureOq: (body) => API._post("/api/oq-create", body),
+};
+
+// Item 4 mirror: pending-capture queue so the captures-today timeline (in /uc3)
+// shows new items immediately. Reuses the same localStorage key /uc3 owns.
+const PENDING_CAPTURES_KEY = "spacesc_pending_captures";
+function pendingAddCapture(type, content) {
+  try {
+    const raw = localStorage.getItem(PENDING_CAPTURES_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(arr)) return;
+    arr.push({
+      local_id: "local-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+      type, content: (content || "").trim(),
+      created_at: Math.floor(Date.now() / 1000),
+    });
+    localStorage.setItem(PENDING_CAPTURES_KEY, JSON.stringify(arr));
+  } catch (_) {}
+}
+
+// HELPERS
+const DOMAIN_OPTIONS = ["Policy", "Economics", "Technology", "Cross-cutting"];
+const TOPIC_OPTIONS = [
+  "Strategic posture",
+  "Norms & treaties",
+  "Industrial base",
+  "Launch economics",
+  "Counterspace",
+  "SDA / SSA",
+  "Commercial",
+  "Allies & partners",
+  "Standards",
+  "Other",
+];
+const STATUS_OPTIONS = ["New", "Retrieve Tomorrow", "Retrieved", "Listened", "Ingest", "Insight", "Done", "Skip"];
+const PRIORITY_OPTIONS = ["", "P1", "P2", "P3"];
+const SOURCE_RELIABILITY_OPTIONS = ["", "High", "Medium", "Low", "Unknown"];
+
+const STATUS_BADGE_CLASS = {
+  "New": "badge-new",
+  "Retrieve Tomorrow": "badge-retrieve",
+  "Retrieved": "badge-retrieved",
+  "Listened": "badge-listened",
+  "Ingest": "badge-ingest",
+  "Insight": "badge-insight",
+  "Done": "badge-done",
+  "Skip": "badge-skip",
+};
+
+const FILTER_TABS = [
+  { key: "queue",   label: "Reading queue", statuses: ["Retrieved", "Retrieve Tomorrow"] },
+  { key: "new",     label: "New",           statuses: ["New"] },
+  { key: "listened",label: "Listened",      statuses: ["Listened"] },
+  { key: "ingest",  label: "To ingest",     statuses: ["Ingest"] },
+  { key: "insight", label: "Insight",       statuses: ["Insight"] },
+  { key: "done",    label: "Done",          statuses: ["Done"] },
+  { key: "all",     label: "All",           statuses: null },
+];
+
+const truncate = (s, n) => {
+  if (!s) return "";
+  if (s.length <= n) return s;
+  return s.slice(0, n).replace(/[,;:.\s]+\S*$/, "") + "…";
+};
+const timeAgo = (iso) => {
+  if (!iso) return "";
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "";
+  const diff = (Date.now() - t) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+  if (diff < 86400 * 7) return Math.floor(diff / 86400) + "d ago";
+  return new Date(iso).toLocaleDateString();
+};
+const hostnameOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch (_) { return ""; } };
+
+// SpaceSC cross-surface tools — Reading is active here
+const SPACESC_TOOLS = [
+  { id: "commute",  name: "Commute",   desc: "Audio · listen + learn",          icon: "🎧", href: "/uc3" },
+  { id: "desk",     name: "Desk",      desc: "Today · inbox · captures",        icon: "🗂",  href: "/desk" },
+  { id: "reading",  name: "Reading",   desc: "Deep read + annotation",          icon: "📖", href: "/reading", active: true },
+  { id: "corpus",   name: "Corpus",    desc: "Search the knowledge base",       icon: "🔍", href: "/corpus" },
+  { id: "insights", name: "Insights",  desc: "Approve or reject claims",        icon: "💎", href: "/insights" },
+  { id: "posture",  name: "Posture",   desc: "Three-domain balance",            icon: "📊", href: "/posture" },
+  { id: "pipeline", name: "Pipeline",  desc: "Ingestion health + errors",       icon: "🩺", href: "/pipeline" },
+  { id: "log",      name: "Build Log", desc: "What shipped, what's next",       icon: "📒", href: "/log" },
+  { id: "feedback", name: "Reports",   desc: "Your 🚩 captures + diagnoses",    icon: "🚩", href: "/feedback" },
+  { id: "map",      name: "System map", desc: "Five use cases · build tree",    icon: "🗺",  href: "/system-map" },
+];
+
+// THEME — same simple system as desk/player
+const THEME_KEY = "spacesc_theme";
+function applyTheme(mode) {
+  const dark = mode === "dark" || (mode === "system" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const root = document.documentElement;
+  if (dark) {
+    root.style.setProperty("--bg", "#1f1d18");
+    root.style.setProperty("--bg-elev", "#2a2823");
+    root.style.setProperty("--bg-sunken", "#3a3833");
+    root.style.setProperty("--ink", "#faf9f5");
+    root.style.setProperty("--ink-soft", "#c4c2bb");
+    root.style.setProperty("--line", "#4a4843");
+    root.style.setProperty("--line-strong", "#5a5853");
+  } else {
+    root.style.removeProperty("--bg");
+    root.style.removeProperty("--bg-elev");
+    root.style.removeProperty("--bg-sunken");
+    root.style.removeProperty("--ink");
+    root.style.removeProperty("--ink-soft");
+    root.style.removeProperty("--line");
+    root.style.removeProperty("--line-strong");
+  }
+}
+try { applyTheme(localStorage.getItem(THEME_KEY) || "system"); } catch (_) {}
+
+// NavMenu
+function NavMenu() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className={"nav-pill" + (open ? " open" : "")} onClick={() => setOpen(!open)} aria-label="Open SpaceSC navigation">
+        <span className="nav-pill-dot"></span>
+        <span>SpaceSC</span>
+        <span className="nav-pill-chev">▼</span>
+      </button>
+      {open && (
+        <>
+          <div className="nav-backdrop" onClick={() => setOpen(false)}></div>
+          <div className="nav-menu" role="dialog" aria-label="SpaceSC tools">
+            <div className="nav-menu-header">Jump to</div>
+            {SPACESC_TOOLS.map((tool) => (
+              <a key={tool.id}
+                className={"nav-menu-item" + (tool.active ? " active" : "")}
+                href={tool.href}
+                onClick={(e) => { if (tool.active) e.preventDefault(); setOpen(false); }}>
+                <span className="nav-menu-icon">{tool.icon}</span>
+                <span className="nav-menu-text">
+                  <div className="nav-menu-name">{tool.name}</div>
+                  <div className="nav-menu-desc">{tool.desc}</div>
+                </span>
+                {tool.active ? null : <span className="nav-menu-arrow">→</span>}
+              </a>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+// LoginPage
+function LoginPage({ onSaved }) {
+  const [val, setVal] = useState("");
+  const [err, setErr] = useState(null);
+  const [verifying, setVerifying] = useState(false);
+
+  const tryToken = async () => {
+    if (!val.trim()) return;
+    setVerifying(true); setErr(null);
+    API.setToken(val.trim());
+    try {
+      await API.listParkingLot(["New"], 1);
+      onSaved();
+    } catch (e) {
+      if (e.code === "AUTH" || (e.message && e.message.includes("401"))) {
+        API.clearToken();
+        setErr("Token rejected. Paste the right one.");
+      } else {
+        setErr("Saved, but couldn't reach the server. Going to the list anyway.");
+        setTimeout(() => onSaved(), 1200);
+      }
+      setVerifying(false);
+    }
+  };
+
+  return (
+    <div className="app">
+      <div className="login-page">
+        <div className="login-title">SpaceSC Reading</div>
+        <div className="login-sub">Paste your bearer token to begin. Same token across all SpaceSC surfaces.</div>
+        <input className="login-input" type="password" placeholder="bearer token" value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") tryToken(); }} autoFocus />
+        {err && <div style={{ color: "var(--red)", fontSize: 13, marginTop: 10 }}>{err}</div>}
+        <button className="login-btn" onClick={tryToken} disabled={verifying}>
+          {verifying ? "Verifying…" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ARTICLE ROW (list view)
+function ArticleRow({ a, onOpen }) {
+  const status = a.status || "";
+  const badgeCls = "badge " + (STATUS_BADGE_CLASS[status] || "badge-done");
+  const priorityClass = a.priority === "P1" ? "chip chip-p1" : "chip";
+  const sourceLine = a.source_newsletter || a.source_email || hostnameOf(a.article_url) || "";
+  const domains = Array.isArray(a.domain) ? a.domain : (a.domain ? [a.domain] : []);
+  const topics = Array.isArray(a.topics) ? a.topics : (a.topics ? [a.topics] : []);
+  return (
+    <div className="card card-tap" onClick={() => onOpen(a)}>
+      <div className="row">
+        <div className="row-main">
+          <div className="row-title">{truncate(a.title || "(untitled)", 130)}</div>
+          {sourceLine && <div className="row-sub">{sourceLine}</div>}
+          <div className="card-chips">
+            {a.priority && <span className={priorityClass}>{a.priority}</span>}
+            {domains.slice(0, 2).map((d, i) => <span key={"d" + i} className="chip">{d}</span>)}
+            {topics.slice(0, 2).map((t, i) => <span key={"t" + i} className="chip">{t}</span>)}
+            {status && <span className={badgeCls}>{status}</span>}
+          </div>
+          <div className="row-meta">{timeAgo(a.email_received || a.retrieved_at || a.created_time)}</div>
+        </div>
+        <span className="row-chevron">→</span>
+      </div>
+    </div>
+  );
+}
+
+// LIST VIEW
+function ListView({ onOpen, refreshKey, onRetry }) {
+  const [filter, setFilter] = useState("queue");
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setError(null);
+    const tab = FILTER_TABS.find((f) => f.key === filter);
+    API.listParkingLot(tab ? tab.statuses : null, 100)
+      .then((r) => { if (cancelled) return; setItems(r.rows || []); setLoading(false); })
+      .catch((e) => { if (cancelled) return; setError(e.message); setLoading(false); });
+    return () => { cancelled = true; };
+  }, [filter, refreshKey]);
+
+  const q = query.trim().toLowerCase();
+  const visible = !q ? items : items.filter((a) =>
+    (a.title || "").toLowerCase().includes(q) ||
+    (a.source_newsletter || "").toLowerCase().includes(q) ||
+    (a.source_email || "").toLowerCase().includes(q) ||
+    (Array.isArray(a.domain) ? a.domain.some((d) => (d || "").toLowerCase().includes(q)) : false) ||
+    (Array.isArray(a.topics) ? a.topics.some((t) => (t || "").toLowerCase().includes(q)) : false)
+  );
+
+  return (
+    <div>
+      <div className="filter-row" role="tablist" aria-label="Status filter">
+        {FILTER_TABS.map((tab) => (
+          <button key={tab.key}
+            className={"filter-chip" + (filter === tab.key ? " active" : "")}
+            onClick={() => setFilter(tab.key)}
+            role="tab"
+            aria-selected={filter === tab.key}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <input
+        type="search"
+        className="search-input"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search title, source, domain, topic…"
+        aria-label="Search articles"
+      />
+      {loading ? <div className="empty"><div className="spinner"></div></div>
+       : error ? (
+         <div className="empty">
+           <div className="empty-icon">⚠</div>
+           Couldn't load: {error}
+           <div style={{ marginTop: 12 }}>
+             <button className="action-btn" onClick={onRetry}>↻ Retry</button>
+           </div>
+         </div>
+       )
+       : visible.length === 0 ? (
+         <div className="empty">
+           <div className="empty-icon">📰</div>
+           {q ? `No articles match "${query}".` : "Nothing here."}
+         </div>
+       ) : (
+         visible.map((a) => <ArticleRow key={a.page_id} a={a} onOpen={onOpen} />)
+       )}
+    </div>
+  );
+}
+
+// CAPTURE SUB-SHEET — used inside ResearchChatSheet for insight / RN / OQ capture.
+const CAPTURE_KINDS = {
+  insight: {
+    icon: "💡", title: "Capture insight",
+    placeholder: "The claim is X, observed in Y context… (this becomes the claim)",
+    api: "captureInsight",
+    payload: (text, ctx) => ({
+      claim: text,
+      claim_type: "observation",
+      domain_primary: "Cross-cutting",
+      source_doc_ids: ctx.articleId ? [ctx.articleId] : [],
+      confidence: "medium",
+      query_context: ctx.sourceContext,
+    }),
+  },
+  rn: {
+    icon: "📝", title: "Research note",
+    placeholder: "Question on top. Reasoning + assessment below.",
+    api: "captureRn",
+    payload: (text, ctx) => ({
+      research_question: text.slice(0, 200),
+      reasoning: text,
+      cited_urls: ctx.articleId ? [ctx.articleId] : [],
+      assessment: "captured-during-research-session",
+      parent_surface: "Reading Workspace",
+      parent_article_page_id: ctx.articleId || undefined,
+    }),
+  },
+  oq: {
+    icon: "❓", title: "Open question",
+    placeholder: "How exactly does X work? What would change if Y?",
+    api: "captureOq",
+    payload: (text, ctx) => ({
+      question: text,
+      domain: "Cross-cutting",
+      parent_article_page_id: ctx.articleId || undefined,
+      parent_surface: "Reading Workspace",
+      notes: ctx.sourceContext,
+    }),
+  },
+};
+
+function CaptureSubSheet({ kind, context, onClose, onDone, showToast }) {
+  const meta = CAPTURE_KINDS[kind];
+  const [text, setText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async () => {
+    if (!text.trim()) return;
+    setSubmitting(true);
+    try {
+      const payload = meta.payload(text.trim(), context);
+      const res = await API[meta.api](payload);
+      // Item 4 mirror: push pending so /uc3 Captures tab shows it instantly.
+      try { pendingAddCapture(kind, text.trim()); } catch (_) {}
+      let msg = meta.title + " saved";
+      if (res && res.learning_gap_id) msg = "Learning gap captured · we'll start building your series.";
+      onDone(msg);
+    } catch (e) {
+      if (e.message && e.message.includes("mac_offline")) {
+        try { pendingAddCapture(kind, text.trim()); } catch (_) {}
+        onDone("Captured · we'll finish syncing when the local agent is back online.");
+      } else {
+        showToast && showToast(meta.title + " failed: " + e.message);
+        setSubmitting(false);
+      }
+    }
+  };
+
+  // Keyboard: Escape closes, Cmd/Ctrl+Enter submits
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") { onClose(); e.preventDefault(); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && text.trim() && !submitting) { submit(); e.preventDefault(); return; }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [text, submitting]);
+
+  return (
+    <div className="capture-sub-backdrop" onClick={onClose}>
+      <div className="capture-sub" role="dialog" aria-modal="true" aria-label={meta.title} onClick={(e) => e.stopPropagation()}>
+        <div className="capture-sub-title">{meta.icon} {meta.title}</div>
+        <div className="capture-sub-sub">From this article · ⌘+Enter to save</div>
+        <textarea
+          className="capture-sub-input" placeholder={meta.placeholder}
+          value={text} onChange={(e) => setText(e.target.value)} autoFocus
+        />
+        <div className="capture-sub-buttons">
+          <button className="capture-sub-btn-sec" onClick={onClose}>Cancel</button>
+          <button className="capture-sub-btn-pri" onClick={submit} disabled={submitting || !text.trim()}>
+            {submitting ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// RESEARCH SESSION CHAT SHEET — auto-corpus-query on open, Sonnet chat,
+// three capture affordances. Mirrors §8.4a.17 W1-W5 CurationChat behavior.
+function ResearchChatSheet({ article, onClose, showToast }) {
+  const [chunks, setChunks] = useState(null); // null = loading; [] or array
+  const [chunksOpen, setChunksOpen] = useState(false);
+  const [chunksError, setChunksError] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [captureKind, setCaptureKind] = useState(null);
+  const bodyRef = useRef(null);
+
+  // Auto-corpus-query on open. Query = title (most semantically dense)
+  // falling back to first 200 chars of body, then blurb.
+  useEffect(() => {
+    let cancelled = false;
+    const query = (article.title || (article.full_text || "").slice(0, 200) || article.blurb || "").trim();
+    if (!query) { setChunks([]); return; }
+    setChunks(null); setChunksError(null);
+    API.queryCorpus(query, 5)
+      .then((r) => { if (!cancelled) setChunks((r && r.chunks) || []); })
+      .catch((e) => { if (!cancelled) { setChunks([]); setChunksError(e.message); } });
+    return () => { cancelled = true; };
+  }, [article.page_id]);
+
+  // Auto-scroll the body when new messages arrive.
+  useEffect(() => {
+    if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+  }, [messages.length, sending]);
+
+  const buildSystem = () => {
+    const ctx = (chunks || []).map((c, i) => {
+      const title = c.title || c.document_title || c.source_doc_id || "(untitled)";
+      const body = c.content || c.text || c.excerpt || "";
+      return `[${i + 1}] ${title}\n${body}`;
+    }).join("\n\n");
+    return (
+      "You're a sharp colleague helping Campbell think through an article in his analytical workbench. " +
+      "Campbell works space security cooperation policy — his frame treats SSC outcomes as the product of an institutional welfare problem across policy, economics, technology. " +
+      "Voice: insightful peer at the kitchen table. Engage with substance, surface tensions or analogies, let him steer.\n\n" +
+      `=== THE ARTICLE ===\nTitle: ${article.title || "(untitled)"}\nSource: ${article.source_newsletter || article.source_email || "unknown"}\n` +
+      (article.full_text ? `\nBody:\n${article.full_text.slice(0, 4000)}` : article.blurb ? `\nBlurb:\n${article.blurb}` : "") +
+      (ctx ? `\n\n=== RELATED CHUNKS FROM HIS CORPUS ===\n${ctx}` : "")
+    );
+  };
+
+  const send = async () => {
+    const t = input.trim();
+    if (!t || sending) return;
+    const next = [...messages, { role: "user", content: t }];
+    setMessages(next);
+    setInput("");
+    setSending(true);
+    try {
+      const r = await API.chat(buildSystem(), next);
+      const blocks = (r && r.response && r.response.content) || [];
+      const textBlock = blocks.find((b) => b && b.type === "text");
+      const reply = (textBlock && textBlock.text) || "(no response)";
+      setMessages([...next, { role: "assistant", content: reply }]);
+    } catch (e) {
+      showToast && showToast("Chat failed: " + e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const captureContext = {
+    articleId: article.page_id,
+    sourceContext: `Captured during research session for "${(article.title || "(untitled)").slice(0, 80)}" (${article.source_newsletter || article.source_email || ""}).`,
+  };
+
+  // Keyboard: Escape closes the chat (only if no capture sub-sheet is open).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (captureKind) return; // sub-sheet handles its own Esc
+      const tgt = e.target;
+      const isTyping = tgt && (tgt.tagName === "TEXTAREA" || tgt.tagName === "INPUT");
+      if (e.key === "Escape" && !isTyping) { onClose(); e.preventDefault(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [captureKind, onClose]);
+
+  return (
+    <>
+      <div className="chat-sheet-backdrop" onClick={onClose}></div>
+      <div className="chat-sheet" role="dialog" aria-modal="true" aria-label="Research session chat">
+        <div className="chat-head">
+          <div className="chat-head-title">💬 Research session · {truncate(article.title || "(untitled)", 40)}</div>
+          <button className="chat-head-close" onClick={onClose} aria-label="Close research session">×</button>
+        </div>
+
+        <div className="chat-context">
+          {chunks === null ? (
+            <span><span className="spinner" style={{ width: 11, height: 11, borderWidth: 1.5, verticalAlign: "middle", marginRight: 6 }}></span> Pulling related corpus chunks…</span>
+          ) : chunks.length === 0 ? (
+            <span>{chunksError ? `Corpus query failed: ${truncate(chunksError, 80)}` : "No related corpus chunks found — chat still works without context."}</span>
+          ) : (
+            <details open={chunksOpen} onToggle={(e) => setChunksOpen(e.currentTarget.open)}>
+              <summary>{chunks.length} related chunk{chunks.length === 1 ? "" : "s"} loaded into chat context</summary>
+              <div className="chat-context-list">
+                {chunks.map((c, i) => (
+                  <div key={i} className="chat-context-item">
+                    <div className="chat-context-title">{c.title || c.document_title || c.source_doc_id || "(untitled chunk)"}</div>
+                    <div>{truncate(c.content || c.text || c.excerpt || "", 220)}</div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+
+        <div className="chat-body" ref={bodyRef}>
+          {messages.length === 0 && !sending && (
+            <div className="chat-empty">
+              Ask anything about this article in light of your corpus.<br/>
+              <span style={{ fontSize: 12 }}>Examples: "How does this square with X I read last month?" · "What's the institutional incentive at play?"</span>
+            </div>
+          )}
+          {messages.map((m, i) => (
+            <div key={i} className={"chat-msg chat-msg-" + m.role}>{m.content}</div>
+          ))}
+          {sending && <div className="chat-msg chat-msg-thinking">Thinking…</div>}
+        </div>
+
+        <div className="chat-input-row">
+          <textarea
+            className="chat-input" value={input} onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask the corpus about this article…"
+            rows={1}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            aria-label="Chat input"
+          />
+          <button className="chat-send" onClick={send} disabled={sending || !input.trim()}>
+            {sending ? "…" : "Send"}
+          </button>
+        </div>
+
+        <div className="chat-capture-row">
+          <button className="chat-capture-btn" onClick={() => setCaptureKind("insight")} aria-label="Capture insight">
+            <span className="chat-capture-icon">💡</span>Insight
+          </button>
+          <button className="chat-capture-btn" onClick={() => setCaptureKind("rn")} aria-label="Capture research note">
+            <span className="chat-capture-icon">📝</span>Note
+          </button>
+          <button className="chat-capture-btn" onClick={() => setCaptureKind("oq")} aria-label="Save open question">
+            <span className="chat-capture-icon">❓</span>Question
+          </button>
+        </div>
+      </div>
+      {captureKind && (
+        <CaptureSubSheet
+          kind={captureKind}
+          context={captureContext}
+          onClose={() => setCaptureKind(null)}
+          onDone={(msg) => { setCaptureKind(null); showToast && showToast(msg); }}
+          showToast={showToast}
+        />
+      )}
+    </>
+  );
+}
+
+// CHIP MULTI-SELECT — used for Domain + Topics
+function ChipMultiSelect({ value, options, onToggle }) {
+  const set = new Set(Array.isArray(value) ? value : (value ? [value] : []));
+  return (
+    <div className="chip-toggles">
+      {options.map((opt) => (
+        <button key={opt}
+          className={"chip-toggle" + (set.has(opt) ? " selected" : "")}
+          onClick={() => onToggle(opt)}
+          aria-pressed={set.has(opt)}>
+          {opt}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// DETAIL VIEW
+function DetailView({ pageId, onClose, onSavedUpdate, showToast }) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [article, setArticle] = useState(null);
+  // savingState: "idle" | "saving" | "saved" | "error"
+  const [savingState, setSavingState] = useState("idle");
+  const [savingErr, setSavingErr] = useState(null);
+  // Phase 2: research session chat sheet open state
+  const [chatOpen, setChatOpen] = useState(false);
+  // pending field changes (collected + debounced into one PATCH per article)
+  const pendingRef = useRef({});
+  const flushTimerRef = useRef(null);
+  const savedFlashRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setError(null); setArticle(null);
+    API.getArticle(pageId)
+      .then((a) => { if (!cancelled) { setArticle(a); setLoading(false); } })
+      .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
+    return () => {
+      cancelled = true;
+      // Flush any pending edits when navigating away.
+      if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null; flushPending(); }
+    };
+  }, [pageId]);
+
+  const flushPending = useCallback(async () => {
+    const pending = pendingRef.current;
+    pendingRef.current = {};
+    const keys = Object.keys(pending);
+    if (keys.length === 0) return;
+    setSavingState("saving");
+    try {
+      await API.updateParkingLot(pageId, pending);
+      setSavingState("saved");
+      if (savedFlashRef.current) clearTimeout(savedFlashRef.current);
+      savedFlashRef.current = setTimeout(() => setSavingState("idle"), 1800);
+      // Surface partial back to list view so the row chip updates without
+      // a full refetch.
+      onSavedUpdate && onSavedUpdate(pageId, pending);
+    } catch (e) {
+      setSavingState("error");
+      setSavingErr(e.message);
+      // Restore the unflushed pending so a retry can attempt again.
+      pendingRef.current = { ...pending, ...pendingRef.current };
+    }
+  }, [pageId, onSavedUpdate]);
+
+  const queueChange = useCallback((property, value) => {
+    pendingRef.current = { ...pendingRef.current, [property]: value };
+    setSavingState("saving");
+    if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    // 800ms debounce — long enough to coalesce burst edits, short enough
+    // to feel responsive when the user pauses typing.
+    flushTimerRef.current = setTimeout(() => { flushTimerRef.current = null; flushPending(); }, 800);
+    // Optimistic local update so the UI doesn't flicker.
+    setArticle((cur) => cur ? { ...cur, ...localFieldsFor(property, value, cur) } : cur);
+  }, [flushPending]);
+
+  // Keyboard: Escape closes detail (only when no overlay open — the chat
+  // sheet has its own Escape handler).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (chatOpen) return;
+      const tgt = e.target;
+      const isTyping = tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA" || tgt.tagName === "SELECT" || tgt.isContentEditable);
+      if (e.key === "Escape" && !isTyping) { onClose(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose, chatOpen]);
+
+  if (loading) return <div className="empty"><div className="spinner"></div></div>;
+  if (error) return (
+    <div className="empty">
+      <div className="empty-icon">⚠</div>
+      Couldn't load article: {error}
+      <div style={{ marginTop: 12 }}>
+        <button className="action-btn" onClick={onClose}>← Back to list</button>
+      </div>
+    </div>
+  );
+  if (!article) return null;
+
+  // Map article shape into the field controls. shapeParkingLotRow normalizes
+  // these to lowercase property names; the update endpoint takes the Notion
+  // property names (capitalized).
+  const status = article.status || "";
+  const priority = article.priority || "";
+  const domains = Array.isArray(article.domain) ? article.domain : (article.domain ? [article.domain] : []);
+  const topics = Array.isArray(article.topics) ? article.topics : (article.topics ? [article.topics] : []);
+  const sourceReliability = article.source_reliability || "";
+  const reframe = article.reframe || "";
+  const notes = article.notes || "";
+
+  const fullText = article.full_text || article.blurb || "";
+  const paragraphs = fullText
+    ? fullText.split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean)
+    : [];
+
+  return (
+    <div className="detail-grid">
+      <div className="article-body">
+        <div className="article-title">{article.title || "(untitled)"}</div>
+        <div className="article-source">
+          {article.source_newsletter || article.source_email || ""}
+          {article.article_url && (
+            <>
+              {(article.source_newsletter || article.source_email) && " · "}
+              <a href={article.article_url} target="_blank" rel="noreferrer">{hostnameOf(article.article_url) || "original"} ↗</a>
+            </>
+          )}
+        </div>
+        {paragraphs.length > 0 ? (
+          <div className="article-content">
+            {paragraphs.map((p, i) => <p key={i}>{p}</p>)}
+          </div>
+        ) : (
+          <div className="article-content-missing">
+            Full text isn't in this row yet. Mark the article "Retrieve Tomorrow" and the overnight retrieval will pull it. The link above opens the original.
+          </div>
+        )}
+        <div className="detail-actions">
+          <button className="action-btn" onClick={onClose}>← Back to list</button>
+        </div>
+      </div>
+
+      <div className="annotation-panel">
+        <div className="annotation-header">
+          <span className="annotation-title">Annotation</span>
+          <span className={"save-indicator " + savingState} role="status" aria-live="polite">
+            {savingState === "saving" && <><span className="spinner" style={{ width: 11, height: 11, borderWidth: 1.5 }}></span> Saving…</>}
+            {savingState === "saved" && <>✓ Saved</>}
+            {savingState === "error" && <>⚠ {truncate(savingErr || "Save failed", 40)}</>}
+            {savingState === "idle" && ""}
+          </span>
+        </div>
+
+        <div className="field-group">
+          <div className="field-label">Status</div>
+          <select className="field-select" value={status} onChange={(e) => queueChange("Status", e.target.value)} aria-label="Status">
+            <option value="">—</option>
+            {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+
+        <div className="field-group">
+          <div className="field-label">Priority</div>
+          <select className="field-select" value={priority} onChange={(e) => queueChange("Priority", e.target.value)} aria-label="Priority">
+            {PRIORITY_OPTIONS.map((p) => <option key={p} value={p}>{p || "—"}</option>)}
+          </select>
+        </div>
+
+        <div className="field-group">
+          <div className="field-label">Source reliability</div>
+          <select className="field-select" value={sourceReliability} onChange={(e) => queueChange("Source Reliability", e.target.value)} aria-label="Source reliability">
+            {SOURCE_RELIABILITY_OPTIONS.map((s) => <option key={s} value={s}>{s || "—"}</option>)}
+          </select>
+        </div>
+
+        <div className="field-group">
+          <div className="field-label">Domain</div>
+          <ChipMultiSelect value={domains} options={DOMAIN_OPTIONS} onToggle={(opt) => {
+            const next = domains.includes(opt) ? domains.filter((d) => d !== opt) : [...domains, opt];
+            queueChange("Domain", next);
+          }} />
+        </div>
+
+        <div className="field-group">
+          <div className="field-label">Topics</div>
+          <ChipMultiSelect value={topics} options={TOPIC_OPTIONS} onToggle={(opt) => {
+            const next = topics.includes(opt) ? topics.filter((t) => t !== opt) : [...topics, opt];
+            queueChange("Topics", next);
+          }} />
+        </div>
+
+        <div className="field-group">
+          <div className="field-label">Reframe — your analytical framing</div>
+          <textarea className="field-textarea" value={reframe} onChange={(e) => queueChange("Reframe", e.target.value)} placeholder="Your framing of this piece — what's the load-bearing claim, what's the lens, why does it matter?" />
+        </div>
+
+        <div className="field-group">
+          <div className="field-label">Notes</div>
+          <textarea className="field-textarea" value={notes} onChange={(e) => queueChange("Notes", e.target.value)} placeholder="Freeform notes." />
+        </div>
+      </div>
+
+      {/* Phase 2: floating action button → opens Research Session chat. */}
+      <button
+        className="chat-fab"
+        onClick={() => setChatOpen(true)}
+        aria-label="Open research session chat"
+        title="Research session"
+      >💬</button>
+
+      {chatOpen && (
+        <ResearchChatSheet
+          article={article}
+          onClose={() => setChatOpen(false)}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  );
+}
+
+// localFieldsFor — apply a queued change to the article object optimistically
+function localFieldsFor(property, value, article) {
+  switch (property) {
+    case "Status": return { status: value };
+    case "Priority": return { priority: value };
+    case "Source Reliability": return { source_reliability: value };
+    case "Domain": return { domain: value };
+    case "Topics": return { topics: value };
+    case "Notes": return { notes: value };
+    case "Reframe": return { reframe: value };
+    default: return {};
+  }
+}
+
+// SETTINGS
+function SettingsView({ onClearToken, showToast }) {
+  const [tokenInput, setTokenInput] = useState("");
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem(THEME_KEY) || "system"; } catch (_) { return "system"; } });
+  const masked = (() => { const t = API.getToken(); return t ? t.slice(0, 6) + "…" + t.slice(-4) : ""; })();
+
+  useEffect(() => { applyTheme(theme); try { localStorage.setItem(THEME_KEY, theme); } catch (_) {} }, [theme]);
+
+  const saveToken = () => {
+    if (!tokenInput.trim()) return;
+    API.setToken(tokenInput.trim());
+    setTokenInput("");
+    showToast && showToast("Token saved");
+  };
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.05, color: "var(--ink-soft)", margin: "8px 0 10px" }}>API token</div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Current</div>
+          <div className="settings-val">{masked || "(not set)"}</div>
+          <input className="settings-input" type="password" placeholder="paste new bearer token" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} />
+          {tokenInput && <button className="settings-action" onClick={saveToken}>Save new token</button>}
+        </div>
+        <div className="settings-row">
+          <button className="settings-action danger" onClick={onClearToken}>Clear token + sign out</button>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.05, color: "var(--ink-soft)", margin: "22px 0 10px" }}>Appearance</div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Theme</div>
+          <div className="filter-row" style={{ marginTop: 8, paddingBottom: 0 }}>
+            {["light", "dark", "system"].map((m) => (
+              <button key={m} className={"filter-chip" + (theme === m ? " active" : "")} onClick={() => setTheme(m)}>{m}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.05, color: "var(--ink-soft)", margin: "22px 0 10px" }}>About</div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Version</div>
+          <div className="settings-val">SpaceSC Reading · Phase 2 (article + annotation + research-chat)</div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-label">Server</div>
+          <div className="settings-val">spacesc-mcp.75xnd2784n.workers.dev</div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-label">Legacy v3 surface</div>
+          <div className="settings-val">
+            <a href="/reading-v3-legacy" style={{ color: "var(--accent)", textDecoration: "none" }}>Open the v3 reading workspace ↗</a>
+            <div style={{ fontSize: 11, color: "var(--ink-mute)", marginTop: 4 }}>Fallback if you need the original surface for any reason. Will be retired after a soak.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// APP ROOT
+function App() {
+  const [authed, setAuthed] = useState(() => API.hasToken());
+  // view: list | detail | settings
+  const [view, setView] = useState(() => {
+    // Deep link: /reading#article=PAGEID jumps straight to detail.
+    try {
+      const h = window.location.hash;
+      if (h && h.length > 1) {
+        const params = new URLSearchParams(h.slice(1));
+        const id = params.get("article");
+        if (id) return { name: "detail", pageId: id };
+      }
+    } catch (_) {}
+    return { name: "list" };
+  });
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [toast, setToast] = useState(null);
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator !== "undefined" ? navigator.onLine !== false : true));
+
+  useEffect(() => {
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
+
+  const showToast = useCallback((msg) => {
+    setToast({ id: Date.now(), msg });
+    setTimeout(() => setToast(null), 2400);
+  }, []);
+
+  const bumpRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  if (!authed) return <LoginPage onSaved={() => setAuthed(true)} />;
+
+  const openArticle = (a) => {
+    setView({ name: "detail", pageId: a.page_id, title: a.title });
+    try { history.replaceState(null, "", "/reading#article=" + encodeURIComponent(a.page_id)); } catch (_) {}
+  };
+  const backToList = () => {
+    setView({ name: "list" });
+    try { history.replaceState(null, "", "/reading"); } catch (_) {}
+  };
+  const openSettings = () => setView({ name: "settings" });
+
+  const isDetail = view.name === "detail";
+  const isSettings = view.name === "settings";
+
+  return (
+    <>
+      <NavMenu />
+      {!isOnline && (
+        <div role="status" aria-live="polite" style={{ position: "sticky", top: 0, zIndex: 70, padding: "8px 12px", background: "rgba(133,79,11,.95)", color: "#fff", fontSize: 12, fontWeight: 500, textAlign: "center" }}>
+          ⚠ You're offline — saves will retry when you're back.
+        </div>
+      )}
+      <div className="app">
+        {isDetail ? (
+          <div className="topbar">
+            <button className="topbar-back" onClick={backToList} aria-label="Back to list">←</button>
+            <div className="topbar-title-detail">{view.title || "Article"}</div>
+            <button className="topbar-gear" onClick={openSettings} aria-label="Settings">⚙</button>
+          </div>
+        ) : isSettings ? (
+          <div className="topbar">
+            <button className="topbar-back" onClick={backToList} aria-label="Close settings">×</button>
+            <div className="topbar-title">Settings</div>
+          </div>
+        ) : (
+          <div className="topbar">
+            <div className="topbar-title">Reading</div>
+            <div className="topbar-sub">read · annotate · research-chat</div>
+            <button className="topbar-gear" onClick={bumpRefresh} aria-label="Refresh">↻</button>
+            <button className="topbar-gear" onClick={openSettings} aria-label="Settings">⚙</button>
+          </div>
+        )}
+
+
+        {view.name === "list" && (
+          <ListView onOpen={openArticle} refreshKey={refreshKey} onRetry={bumpRefresh} />
+        )}
+        {view.name === "detail" && (
+          <DetailView pageId={view.pageId} onClose={backToList} onSavedUpdate={() => {}} showToast={showToast} />
+        )}
+        {view.name === "settings" && (
+          <SettingsView onClearToken={() => { API.clearToken(); setAuthed(false); }} showToast={showToast} />
+        )}
+      </div>
+      {toast && <div className="toast" role="status" aria-live="polite">{toast.msg}</div>}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

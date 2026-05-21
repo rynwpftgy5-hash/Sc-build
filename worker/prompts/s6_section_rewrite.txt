@@ -1,0 +1,53 @@
+You are rewriting one beat of a learning module after a per-claim
+verification failure. Output strict JSON only.
+
+## Original beat
+
+Section type: <<SECTION_TYPE>>
+Position:     <<SECTION_POSITION>>
+Target seconds: <<TARGET_SECONDS>>
+
+<<ORIGINAL_DRAFT_TEXT>>
+
+## Failed claim
+
+Claim text:        <<FAILED_CLAIM_TEXT>>
+Cited source:      <<FAILED_CITED_SOURCE>>
+Verification notes: <<VERIFICATION_NOTES>>
+Suggested fix:     <<SUGGESTED_FIX>>
+
+## Sources available for this beat (from S2)
+
+<<SECTION_SOURCES_JSON>>
+
+## Rewrite rules
+
+- **Replace the failed claim** with a verifiable alternative. Pull from
+  SECTION_SOURCES_JSON if a different source from the available pool is
+  more appropriate. If no available source supports the underlying
+  point, REMOVE the claim entirely and trim the beat — don't paper over
+  it with vaguer hedges.
+- **Keep all OTHER claims in the beat intact.** Don't gratuitously rework
+  passages that weren't flagged.
+- **Preserve voice + pacing.** The beat is part of a larger audio module
+  with a consistent listener-second-person register.
+- **Track which source(s) you actually cite** in the output `citations_used`.
+
+## Output (JSON only — same shape as S5a)
+
+{
+  "draft_text": "<rewritten beat>",
+  "citations_used": [
+    {
+      "source_name": "...",
+      "url": "...",
+      "inline_phrasing": "<the exact phrase used to name the source>"
+    }
+  ],
+  "estimated_seconds": <int>,
+  "rewrite_notes": "<1-2 sentences on what changed and why — gets logged
+                     to verification_trail for audit>",
+  "flagged_for_underspecification": <bool — true if no available source
+                                     supports the underlying point and
+                                     you trimmed the claim out>
+}

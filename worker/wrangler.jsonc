@@ -1,0 +1,88 @@
+/**
+ * SpaceSC MCP server (§8.4a.10).
+ * Bridges Opus on claude.ai (web + iPhone) to SpaceSC RAG corpus + insight ledger.
+ * 4 tools: query_corpus, capture_insight, search_insights, approve_insight.
+ *
+ *  - query_corpus     → n8n /webhook/query (Bearer WEBHOOK_SECRET)
+ *  - capture_insight  → n8n /webhook/insight-capture direct-mode (Bearer WEBHOOK_SECRET)
+ *  - search_insights  → Mac il-server /search via Tailscale Funnel (Bearer IL_SERVER_TOKEN)
+ *  - approve_insight  → Mac il-server /approve via Tailscale Funnel (Bearer IL_SERVER_TOKEN)
+ */
+{
+	"$schema": "../node_modules/wrangler/config-schema.json",
+	"name": "spacesc-mcp",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-03-10",
+	"compatibility_flags": ["nodejs_compat"],
+	"migrations": [
+		{
+			"new_sqlite_classes": ["SpaceSCMCP"],
+			"tag": "v1"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"class_name": "SpaceSCMCP",
+				"name": "MCP_OBJECT"
+			}
+		]
+	},
+	"observability": {
+		"enabled": true
+	},
+	"r2_buckets": [
+		{
+			"binding": "TTS_CACHE",
+			"bucket_name": "spacesc-tts-cache"
+		}
+	],
+	"d1_databases": [
+		{
+			"binding": "UC3_DB",
+			"database_name": "uc3_fundamentals",
+			"database_id": "67501587-1465-45fc-8ae9-aa640afeb165",
+			"migrations_dir": "migrations"
+		}
+	],
+	"workflows": [
+		{
+			"name": "uc3-fundamentals-pipeline",
+			"binding": "UC3_PIPELINE",
+			"class_name": "Uc3FundamentalsPipeline"
+		}
+	],
+	"rules": [
+		{ "type": "Text", "globs": ["**/*.html", "**/*.txt", "**/feedback-button.js"], "fallthrough": true }
+	],
+	"queues": {
+		"producers": [
+			{ "binding": "S5_DRAFT_QUEUE", "queue": "uc3-s5-section-drafting" },
+			{ "binding": "MODULE_TTS_QUEUE", "queue": "uc3-module-tts" }
+		],
+		"consumers": [
+			{
+				"queue": "uc3-s5-section-drafting",
+				"max_batch_size": 5,
+				"max_batch_timeout": 30,
+				"max_retries": 3,
+				"dead_letter_queue": "uc3-s5-section-drafting-dlq"
+			},
+			{
+				"queue": "uc3-module-tts",
+				"max_batch_size": 1,
+				"max_batch_timeout": 5,
+				"max_retries": 2,
+				"dead_letter_queue": "uc3-module-tts-dlq"
+			}
+		]
+	},
+	/* Item 2: daily briefing cron.
+	   11:00 UTC = 7:00 AM ET / 4:00 AM PT. Gives ~3-4h before a 9am commute
+	   for Sonnet synthesis + ElevenLabs chunked TTS (~3-5 min wall) plus
+	   buffer. Generator is idempotent on briefing_date so retries on
+	   transient failure are safe. */
+	"triggers": {
+		"crons": ["0 11 * * *"]
+	}
+}

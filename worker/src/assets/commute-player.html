@@ -1,0 +1,2868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SpaceSC Commute</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#faf9f5">
+<style>
+:root {
+  --bg: #faf9f5;
+  --bg-elev: #ffffff;
+  --bg-sunken: #f1efe8;
+  --ink: #1f1d18;
+  --ink-soft: #56544c;
+  --ink-mute: #888780;
+  --line: #e7e5dc;
+  --line-strong: #d4d1c4;
+  --accent: #185fa5;
+  --accent-warm: #854f0b;
+  --green: #3b6d11;
+  --red: #a32d2d;
+  --purple: #534ab7;
+  --shadow: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
+  --shadow-rise: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --radius: 10px;
+  --radius-lg: 16px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { background: var(--bg); color: var(--ink); height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-size: 15px; line-height: 1.4;
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0;
+  overscroll-behavior-y: contain;
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+input, textarea { font: inherit; color: inherit; }
+
+.app { max-width: 720px; margin: 0 auto; min-height: 100vh; }
+
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  background: var(--bg);
+  border-bottom: 0.5px solid var(--line);
+  padding: 12px 18px;
+  display: flex; align-items: center; gap: 12px;
+}
+.topbar-back { font-size: 22px; padding: 4px 8px; margin-left: -8px; color: var(--ink-soft); }
+.topbar-title { font-size: 17px; font-weight: 600; flex: 1; line-height: 1.25; }
+.topbar-gear { font-size: 22px; padding: 4px 8px; margin-right: -8px; color: var(--ink-soft); }
+
+.page { padding: 16px 18px 140px; }
+
+.section { margin: 24px 0 10px; display: flex; align-items: baseline; gap: 10px; }
+.section-icon { font-size: 16px; }
+.section-title { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); }
+.section-meta { font-size: 12px; color: var(--ink-mute); margin-left: auto; }
+.section + .section { margin-top: 28px; }
+.section.first { margin-top: 4px; }
+
+.card {
+  background: var(--bg-elev);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.card-tap { cursor: pointer; }
+.card-tap:active { background: var(--bg-sunken); }
+.card-tap:hover { border-color: var(--line-strong); }
+
+.row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px;
+}
+.row + .row { border-top: 0.5px solid var(--line); }
+.row-main { flex: 1; min-width: 0; }
+.row-title { font-size: 15px; font-weight: 500; color: var(--ink); line-height: 1.3; }
+.row-sub { font-size: 13px; color: var(--ink-soft); margin-top: 3px; line-height: 1.35; }
+.row-meta { font-size: 12px; color: var(--ink-mute); margin-top: 4px; }
+.row-chevron { color: var(--ink-mute); font-size: 16px; flex-shrink: 0; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: 12px;
+  font-size: 11px; font-weight: 500;
+  border: 0.5px solid;
+}
+.badge-ok    { color: var(--green);  border-color: var(--green);  background: rgba(59,109,17,.07); }
+.badge-warn  { color: var(--accent-warm); border-color: var(--accent-warm); background: rgba(133,79,11,.07); }
+.badge-busy  { color: var(--purple); border-color: var(--purple); background: rgba(83,74,183,.07); }
+.badge-bad   { color: var(--red);    border-color: var(--red);    background: rgba(163,45,45,.07); }
+.badge-due   { color: var(--red);    border-color: var(--red);    background: rgba(163,45,45,.07); }
+.badge-muted { color: var(--ink-mute); border-color: var(--line-strong); background: var(--bg-sunken); }
+
+.play-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 16px; border-radius: 999px;
+  background: var(--ink); color: var(--bg-elev);
+  font-size: 14px; font-weight: 500;
+  border: none;
+}
+.play-btn[disabled] {
+  background: var(--bg-sunken); color: var(--ink-mute); cursor: default;
+}
+
+.play-btn-secondary {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: 999px;
+  background: var(--bg-sunken); color: var(--ink);
+  font-size: 13px; font-weight: 500;
+  border: 0.5px solid var(--line);
+}
+.play-btn-secondary[disabled] { color: var(--ink-mute); }
+
+.module-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 14px; }
+
+.state-line { font-size: 13px; color: var(--ink-soft); padding: 0 16px 14px; line-height: 1.4; }
+.state-line.pulse::before {
+  content: "●"; color: var(--purple); margin-right: 6px;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+@keyframes pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+
+.empty {
+  text-align: center; padding: 40px 24px; color: var(--ink-mute);
+  font-size: 14px; line-height: 1.6;
+}
+.empty-icon { font-size: 28px; margin-bottom: 12px; opacity: .5; }
+
+.tabbar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--bg-elev);
+  border-top: 0.5px solid var(--line);
+  display: flex;
+  padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
+  z-index: 50;
+  max-width: 720px; margin: 0 auto;
+}
+.tab {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 4px; color: var(--ink-mute); font-size: 11px;
+  border: none; background: none;
+}
+.tab-icon { font-size: 20px; }
+.tab.active { color: var(--accent); }
+
+.mini-player {
+  position: fixed; left: 0; right: 0;
+  bottom: calc(58px + env(safe-area-inset-bottom));
+  background: var(--bg-elev);
+  border-top: 0.5px solid var(--line);
+  padding: 10px 16px;
+  display: flex; align-items: center; gap: 12px;
+  z-index: 49;
+  max-width: 720px; margin: 0 auto;
+  box-shadow: var(--shadow-rise);
+}
+.mini-info { flex: 1; min-width: 0; cursor: pointer; }
+.mini-title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-sub { font-size: 11px; color: var(--ink-mute); }
+.mini-btn { font-size: 22px; padding: 4px 10px; color: var(--ink); }
+
+.player-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.player-head {
+  display: flex; align-items: center;
+  padding: 14px 18px;
+  border-bottom: 0.5px solid var(--line);
+}
+.player-head-close { font-size: 22px; color: var(--ink-soft); padding: 4px 10px; margin-left: -10px; }
+.player-head-title { flex: 1; text-align: center; font-size: 13px; font-weight: 600; color: var(--ink-soft); letter-spacing: 0.04em; text-transform: uppercase; }
+.player-body { flex: 1; padding: 24px 24px 60px; display: flex; flex-direction: column; gap: 22px; }
+
+.player-meta { text-align: center; }
+.player-kind { font-size: 12px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.08em; }
+.player-title { font-size: 20px; font-weight: 600; margin-top: 6px; line-height: 1.3; }
+.player-series { font-size: 14px; color: var(--ink-soft); margin-top: 6px; }
+.player-voice { font-size: 12px; color: var(--ink-mute); margin-top: 8px; }
+
+.scrubber-wrap { display: flex; flex-direction: column; gap: 8px; }
+.scrubber { width: 100%; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; cursor: pointer; }
+.scrubber-fill { height: 100%; background: var(--ink); transition: width .1s linear; }
+.times { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-mute); }
+
+.transport { display: flex; align-items: center; justify-content: center; gap: 32px; padding: 8px 0; }
+.transport-skip { font-size: 26px; color: var(--ink-soft); padding: 10px; }
+.transport-play {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: var(--ink); color: var(--bg-elev);
+  font-size: 28px; display: inline-flex; align-items: center; justify-content: center;
+}
+
+.actions-grid {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+  padding: 4px 0;
+}
+.action-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 12px 4px;
+  background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius);
+  font-size: 10px; color: var(--ink-soft); line-height: 1.2;
+  text-align: center;
+}
+.action-btn:active { background: var(--bg-sunken); }
+.action-btn-icon { font-size: 22px; }
+
+.verdict-row { display: flex; gap: 10px; padding: 4px 0; }
+.verdict-approve {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 16px; border-radius: var(--radius);
+  background: var(--green); color: white; font-size: 16px; font-weight: 600;
+}
+.verdict-approve[disabled] { background: var(--bg-sunken); color: var(--ink-mute); }
+.verdict-react {
+  width: 56px; display: flex; align-items: center; justify-content: center;
+  padding: 16px; border-radius: var(--radius);
+  background: var(--bg-elev); border: 0.5px solid var(--line);
+  font-size: 22px;
+}
+
+.sheet-backdrop {
+  position: fixed; inset: 0; z-index: 70;
+  background: rgba(31,29,24,0.4);
+  display: flex; align-items: flex-end; justify-content: center;
+  padding: 12px;
+  animation: fade-in .2s;
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.sheet {
+  background: var(--bg-elev);
+  border-radius: 20px;
+  max-width: 720px; width: 100%;
+  padding: 20px 22px 28px;
+  max-height: 80vh; overflow-y: auto;
+  animation: slide-up .25s ease-out;
+  margin-bottom: env(safe-area-inset-bottom);
+}
+@keyframes slide-up { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.sheet-handle { width: 36px; height: 4px; background: var(--line-strong); border-radius: 2px; margin: 0 auto 16px; }
+.sheet-title { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+.sheet-sub { font-size: 13px; color: var(--ink-soft); margin-bottom: 18px; line-height: 1.45; }
+.sheet-input {
+  width: 100%; padding: 12px 14px; border-radius: var(--radius);
+  background: var(--bg-sunken); border: 0.5px solid var(--line);
+  font-size: 15px; resize: vertical; min-height: 96px;
+}
+.sheet-input:focus { outline: 1.5px solid var(--accent); }
+.sheet-buttons { display: flex; gap: 10px; margin-top: 16px; }
+.sheet-btn-primary {
+  flex: 1; padding: 14px; border-radius: var(--radius);
+  background: var(--ink); color: var(--bg-elev);
+  font-size: 15px; font-weight: 600;
+}
+.sheet-btn-primary[disabled] { background: var(--bg-sunken); color: var(--ink-mute); }
+.sheet-btn-secondary {
+  padding: 14px 20px; border-radius: var(--radius);
+  background: var(--bg-sunken); border: 0.5px solid var(--line);
+  font-size: 15px;
+}
+.sheet-status { font-size: 13px; color: var(--ink-soft); padding: 10px 0; line-height: 1.5; }
+.sheet-record-btn {
+  width: 80px; height: 80px; border-radius: 50%;
+  background: var(--red); color: white;
+  font-size: 28px; display: inline-flex; align-items: center; justify-content: center;
+  margin: 8px auto;
+}
+.sheet-record-btn.recording { animation: pulse 1.1s infinite ease-in-out; }
+.sheet-record-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 0; }
+.sheet-record-hint { font-size: 13px; color: var(--ink-mute); }
+
+.toast {
+  position: fixed; bottom: 130px; left: 50%; transform: translateX(-50%);
+  background: var(--ink); color: var(--bg-elev);
+  padding: 12px 20px; border-radius: 999px; font-size: 14px;
+  z-index: 100; box-shadow: var(--shadow-rise);
+  max-width: 90%; text-align: center;
+  animation: toast-in .2s;
+}
+@keyframes toast-in { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+
+.login-page { padding: 60px 24px; text-align: center; }
+.login-title { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+.login-sub { font-size: 14px; color: var(--ink-soft); margin-bottom: 28px; }
+.login-input {
+  width: 100%; padding: 14px; border-radius: var(--radius);
+  background: var(--bg-elev); border: 0.5px solid var(--line);
+  font-size: 14px; font-family: ui-monospace, monospace;
+}
+.login-btn {
+  width: 100%; padding: 14px; border-radius: var(--radius);
+  background: var(--ink); color: var(--bg-elev);
+  font-size: 15px; font-weight: 600; margin-top: 12px;
+}
+
+.spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid var(--line); border-top-color: var(--ink);
+  border-radius: 50%; animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.queue-tile {
+  background: var(--ink); color: var(--bg-elev);
+  border-radius: var(--radius-lg);
+  padding: 22px 22px 18px;
+  margin-bottom: 10px;
+}
+.queue-label { font-size: 11px; opacity: .65; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+.queue-title { font-size: 22px; font-weight: 600; margin-bottom: 14px; line-height: 1.25; }
+.queue-line { font-size: 13px; opacity: .85; margin-bottom: 18px; }
+.queue-buttons { display: flex; gap: 10px; }
+.queue-play {
+  flex: 1; padding: 14px;
+  background: var(--bg-elev); color: var(--ink);
+  border-radius: var(--radius); font-size: 15px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+
+.settings-row { padding: 14px 16px; }
+.settings-row + .settings-row { border-top: 0.5px solid var(--line); }
+.settings-label { font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.settings-val { font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-soft); }
+.settings-input { width: 100%; padding: 10px 12px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-family: ui-monospace, monospace; font-size: 13px; margin-top: 8px; }
+.settings-action { color: var(--accent); font-size: 14px; padding: 8px 0; background: none; border: none; }
+.settings-action.danger { color: var(--red); }
+
+/* Nav pill (top-right, jump to other SpaceSC surfaces) */
+.nav-pill {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  z-index: 80;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 12px 7px 10px;
+  background: var(--bg-elev); border: 0.5px solid var(--line);
+  border-radius: 999px; box-shadow: var(--shadow);
+  font-size: 12px; font-weight: 600; color: var(--ink);
+}
+.nav-pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
+.nav-pill-chev { font-size: 10px; color: var(--ink-mute); transition: transform .2s; }
+.nav-pill.open .nav-pill-chev { transform: rotate(180deg); }
+.nav-backdrop { position: fixed; inset: 0; background: rgba(31,29,24,0.18); z-index: 79; }
+.nav-menu {
+  position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 44px)); right: max(10px, env(safe-area-inset-right));
+  z-index: 80; width: min(280px, calc(100vw - 20px));
+  background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(31,29,24,0.18); overflow: hidden;
+  animation: slide-up .18s ease-out;
+}
+.nav-menu-header { padding: 10px 14px 8px; border-bottom: 0.5px solid var(--line); font-size: 10px; font-weight: 700; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; }
+.nav-menu-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; text-decoration: none; color: var(--ink);
+  border-bottom: 0.5px solid var(--line);
+}
+.nav-menu-item:last-child { border-bottom: none; }
+.nav-menu-item.active { background: var(--ink); color: var(--bg-elev); }
+.nav-menu-icon { font-size: 18px; flex-shrink: 0; width: 26px; text-align: center; }
+.nav-menu-text { flex: 1; min-width: 0; }
+.nav-menu-name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.nav-menu-desc { font-size: 11px; color: var(--ink-mute); margin-top: 1px; }
+.nav-menu-item.active .nav-menu-desc { color: rgba(250,249,245,0.7); }
+.nav-menu-arrow { color: var(--ink-mute); font-size: 12px; }
+
+/* Library subtabs (Articles | Series) */
+.subtabs { display: flex; gap: 4px; padding: 4px; background: var(--bg-sunken); border-radius: 999px; margin-bottom: 14px; }
+.subtab { flex: 1; padding: 8px 12px; border-radius: 999px; font-size: 13px; font-weight: 500; color: var(--ink-soft); background: none; border: none; }
+.subtab.active { background: var(--bg-elev); color: var(--ink); box-shadow: var(--shadow); }
+
+/* Article-specific row (in queue / library) */
+.article-row-priority { font-size: 10px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; }
+.article-row-source { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+.article-row-domain-chips { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.chip { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 10px; background: var(--bg-sunken); color: var(--ink-soft); border: 0.5px solid var(--line); }
+.chip.priority-1 { color: var(--red); border-color: var(--red); background: rgba(163,45,45,.07); }
+
+/* "Preparing audio" overlay for article playback */
+.prep-overlay {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(250,249,245,0.96);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; padding: 24px; text-align: center;
+}
+.prep-icon { font-size: 36px; opacity: .6; }
+.prep-msg { font-size: 16px; font-weight: 500; }
+.prep-sub { font-size: 13px; color: var(--ink-soft); max-width: 320px; line-height: 1.5; }
+
+/* Capture-type deep-link rows */
+.capture-link {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px;
+}
+.capture-link-icon { font-size: 22px; }
+.capture-link-text { flex: 1; }
+.capture-link-name { font-size: 14px; font-weight: 500; }
+.capture-link-desc { font-size: 12px; color: var(--ink-mute); margin-top: 2px; }
+.capture-link-arrow { color: var(--ink-mute); font-size: 16px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// API LAYER
+const BASE = "https://spacesc-mcp.75xnd2784n.workers.dev";
+const TOKEN_KEY = "spacesc_mcp_token";
+
+const API = {
+  getToken: () => { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (_) { return ""; } },
+  setToken: (t) => { try { localStorage.setItem(TOKEN_KEY, t); } catch (_) {} },
+  clearToken: () => { try { localStorage.removeItem(TOKEN_KEY); } catch (_) {} },
+  hasToken: () => !!API.getToken(),
+
+  async _readBody(r) {
+    // Helper: read body once; try JSON, fall back to text
+    try {
+      const txt = await r.text();
+      try { return { json: JSON.parse(txt), text: txt }; } catch (_) { return { json: null, text: txt }; }
+    } catch (_) { return { json: null, text: "" }; }
+  },
+
+  async _get(path, opts) {
+    const t = API.getToken();
+    if (!t) throw Object.assign(new Error("no token"), { code: "NO_TOKEN" });
+    const timeout = (opts && opts.timeout) || 30000;
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const r = await fetch(BASE + path, { headers: { Authorization: "Bearer " + t }, signal: ctrl.signal });
+      clearTimeout(tid);
+      if (r.status === 401 || r.status === 403) throw Object.assign(new Error("unauthorized"), { code: "AUTH" });
+      if (!r.ok) {
+        const b = await API._readBody(r);
+        const msg = "HTTP " + r.status + (b.text ? ": " + b.text.slice(0, 200) : "");
+        throw Object.assign(new Error(msg), { code: "HTTP_" + r.status, body: b.text, jsonBody: b.json });
+      }
+      return r.json();
+    } catch (e) {
+      clearTimeout(tid);
+      if (e.name === "AbortError") throw Object.assign(new Error("timeout"), { code: "TIMEOUT" });
+      throw e;
+    }
+  },
+
+  async _post(path, body, opts) {
+    const t = API.getToken();
+    if (!t) throw Object.assign(new Error("no token"), { code: "NO_TOKEN" });
+    const timeout = (opts && opts.timeout) || 30000;
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const r = await fetch(BASE + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
+        body: JSON.stringify(body || {}),
+        signal: ctrl.signal,
+      });
+      clearTimeout(tid);
+      if (r.status === 401 || r.status === 403) throw Object.assign(new Error("unauthorized"), { code: "AUTH" });
+      if (r.status === 207) { const j = await r.json(); j._partial = true; return j; }
+      if (!r.ok) {
+        const b = await API._readBody(r);
+        const msg = "HTTP " + r.status + (b.text ? ": " + b.text.slice(0, 200) : "");
+        throw Object.assign(new Error(msg), { code: "HTTP_" + r.status, body: b.text, jsonBody: b.json });
+      }
+      return r.json();
+    } catch (e) {
+      clearTimeout(tid);
+      if (e.name === "AbortError") throw Object.assign(new Error("timeout"), { code: "TIMEOUT" });
+      throw e;
+    }
+  },
+
+  listGaps: () => API._get("/api/uc3/list-gaps"),
+  listBriefsReady: () => API._get("/api/uc3/list-briefs-ready"),
+  todayBriefing: () => API._get("/api/uc3/today-briefing"),
+  briefingAudioUrl: (date) => BASE + "/api/uc3/briefing-audio?date=" + encodeURIComponent(date),
+  pipelineStatus: (gid) => API._get("/api/uc3/pipeline-status?gap_id=" + encodeURIComponent(gid)),
+  spacedRepDue: () => API._get("/api/uc3/spaced-rep-due"),
+  markListened: (mid) => API._post("/api/uc3/spaced-rep-mark-listened", { module_id: mid }),
+  errataListAll: () => API._get("/api/uc3/module-errata-list?status=open"),
+  capturesToday: () => API._get("/api/uc3/captures-today"),
+  flagClaim: (body) => API._post("/api/uc3/module-errata-create", body),
+  approve: (mid) => API._post("/api/uc3/module-approve", { module_id: mid }, { timeout: 15000 }),
+  retryModuleTts: (mid) => API._post("/api/uc3/module-tts", { module_id: mid, async: true }, { timeout: 15000 }),
+  // §voice-fix-3: regenerate brief audio in the persisted rotation voice.
+  // Brief gen is sync server-side (~30-60s); we kick it off and rely on the
+  // SeriesScreen polling loop to pick up the new brief.voice_id + audio key.
+  // For approved modules, also fire the full-audio queue so the episode
+  // gets re-rendered in the same voice.
+  regenerateModuleAudio: (mid) => API._post("/api/uc3/module-brief", { module_id: mid }, { timeout: 120000 }),
+  regenerateFullAudio: (mid) => API._post("/api/uc3/module-tts", { module_id: mid, async: true }, { timeout: 15000 }),
+  reactFeedback: (mid, t) => API._post("/api/uc3/module-feedback", { module_id: mid, voice_transcript: t }, { timeout: 600000 }),
+  captureInsight: (body) => API._post("/api/capture", body),
+  captureRn: (body) => API._post("/api/rn-capture", body),
+  captureOq: (body) => API._post("/api/oq-create", body),
+  captureGap: (body) => API._post("/api/gap-capture", body),
+  moduleAudioUrl: (mid) => BASE + "/api/uc3/module-audio?module_id=" + mid,
+  briefAudioUrl: (mid) => BASE + "/api/uc3/brief-audio?module_id=" + mid,
+
+  // §8.4a.11 / v5.1 — Articles (Reading Parking Lot)
+  listArticles: (filter) => API._post("/api/parking-lot-list", filter || { status_filter: ["Retrieved"], sort: "priority_then_email", limit: 50 }),
+  getArticle: (page_id) => API._post("/api/article", { page_id }),
+  markArticleListened: (page_id) => API._post("/api/parking-lot-update", { page_id, properties: { Status: "Listened" } }),
+  markArticleIngest: (page_id) => API._post("/api/parking-lot-update", { page_id, properties: { Status: "Ingest" } }),
+  markArticleSkip: (page_id) => API._post("/api/parking-lot-update", { page_id, properties: { Status: "Skip" } }),
+
+  // TTS cache (auth-gated; have to fetch with bearer then create blob URL for <audio>)
+  async getCachedAudioBlob(page_id) {
+    const t = API.getToken();
+    const r = await fetch(BASE + "/api/tts-cache/" + encodeURIComponent(page_id), {
+      headers: { Authorization: "Bearer " + t },
+    });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error("cache fetch HTTP " + r.status);
+    return await r.blob();
+  },
+  async generateAudioBlob(text, voice_id, model_id) {
+    const t = API.getToken();
+    const r = await fetch(BASE + "/api/tts-chunked", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
+      body: JSON.stringify({
+        text, voice_id: voice_id || "XjLkpWUlnhS8i7gGz3lZ",
+        model_id: model_id || "eleven_multilingual_v2",
+      }),
+    });
+    if (!r.ok) throw new Error("TTS HTTP " + r.status + ": " + (await r.text()).slice(0, 200));
+    return await r.blob();
+  },
+  async cacheAudioBlob(page_id, blob) {
+    const t = API.getToken();
+    await fetch(BASE + "/api/tts-cache/" + encodeURIComponent(page_id), {
+      method: "PUT",
+      headers: { "Content-Type": "audio/mpeg", Authorization: "Bearer " + t },
+      body: blob,
+    });
+  },
+};
+
+// HELPERS
+const VOICE_NAMES = {
+  "ErXwobaYiN019PkySvjV": "Antoni",
+  "21m00Tcm4TlvDq8ikWAM": "Rachel",
+  "pNInz6obpgDQGcFmaJgB": "Adam",
+  "EXAVITQu4vr4xnSDxMaL": "Bella",
+  "yoZ06aMxZJJ28mfd3POQ": "Sam",
+};
+const VOICE_IDS = Object.keys(VOICE_NAMES);
+const voiceName = (id) => VOICE_NAMES[id] || (id ? id.slice(0, 6) : "—");
+// Pick a deterministic rotation voice from a stable string key (e.g. page_id)
+const pickVoiceFor = (key) => {
+  let h = 0;
+  for (let i = 0; i < (key || "").length; i++) h = ((h << 5) - h + key.charCodeAt(i)) | 0;
+  return VOICE_IDS[Math.abs(h) % VOICE_IDS.length];
+};
+
+const fmtTime = (s) => {
+  if (!s || !Number.isFinite(s)) return "0:00";
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return m + ":" + String(sec).padStart(2, "0");
+};
+
+const truncate = (s, n) => {
+  if (!s) return "";
+  if (s.length <= n) return s;
+  return s.slice(0, n).replace(/[,;:.\s]+\S*$/, "") + "…";
+};
+
+const timeAgo = (unix) => {
+  if (!unix) return "";
+  const diff = (Date.now() / 1000) - unix;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+  if (diff < 86400 * 7) return Math.floor(diff / 86400) + "d ago";
+  return new Date(unix * 1000).toLocaleDateString();
+};
+
+// Broader pattern future-proofed against W7/W8/W9/... and other test markers.
+const isLegacyGap = (g) => /\b(dry-run|W\d+|re-run|smoke[-_ ]?test|test gap|dryrun)\b/i.test(g.gap_title || "");
+
+// D4: pipeline-tracking surface. When a user captures a learning gap mid-
+// commute, we persist a small tracking record locally so HomeScreen can show
+// "your new series is building · N of M briefs ready" until the first brief
+// lands. Survives reload; auto-prunes after 24h or when the series is whole.
+const TRACKING_KEY = "spacesc_tracking_gaps";
+const trackingLoad = () => {
+  try {
+    const raw = localStorage.getItem(TRACKING_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    const cutoff = (Date.now() / 1000) - 86400;
+    return arr.filter(r => r && r.gap_id && (r.started_at || 0) >= cutoff);
+  } catch (_) { return []; }
+};
+const trackingSave = (arr) => {
+  try { localStorage.setItem(TRACKING_KEY, JSON.stringify(arr || [])); } catch (_) {}
+};
+const trackingAdd = (gap_id, title) => {
+  const arr = trackingLoad();
+  if (arr.find(r => r.gap_id === gap_id)) return arr;
+  const next = [...arr, { gap_id, title: title || "(new series)", started_at: Math.floor(Date.now() / 1000) }];
+  trackingSave(next);
+  return next;
+};
+const trackingRemove = (gap_id) => {
+  const next = trackingLoad().filter(r => r.gap_id !== gap_id);
+  trackingSave(next);
+  return next;
+};
+
+// Item 4: pending-capture queue. Mirror of trackingAdd/Remove/Load but for
+// capture items the user just submitted, so CapturesScreen can render them
+// before the server-side write + refetch lands. Items prune automatically
+// once they match a server item (by content prefix) or after 24h either way.
+const PENDING_CAPTURES_KEY = "spacesc_pending_captures";
+const pendingLoad = () => {
+  try {
+    const raw = localStorage.getItem(PENDING_CAPTURES_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    const cutoff = (Date.now() / 1000) - 86400;
+    return arr.filter(r => r && r.local_id && (r.created_at || 0) >= cutoff);
+  } catch (_) { return []; }
+};
+const pendingSave = (arr) => {
+  try { localStorage.setItem(PENDING_CAPTURES_KEY, JSON.stringify(arr || [])); } catch (_) {}
+};
+const pendingAdd = (type, content) => {
+  const arr = pendingLoad();
+  const next = [...arr, {
+    local_id: "local-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+    type, content: (content || "").trim(),
+    created_at: Math.floor(Date.now() / 1000),
+  }];
+  pendingSave(next);
+  return next;
+};
+const pendingPrune = (serverItems) => {
+  // Remove pending entries whose content prefix appears in any server item
+  // of the same type. Server items typically have richer / truncated content
+  // so we compare against the first 60 chars normalized.
+  const norm = (s) => (s || "").replace(/\s+/g, " ").trim().toLowerCase().slice(0, 60);
+  const serverFingerprints = new Set((serverItems || []).map(s => s.type + "|" + norm(s.content)));
+  const current = pendingLoad();
+  const next = current.filter(p => !serverFingerprints.has(p.type + "|" + norm(p.content)));
+  if (next.length !== current.length) pendingSave(next);
+  return next;
+};
+
+// D5: estimate audio duration in seconds from MP3 byte count. ElevenLabs
+// eleven_multilingual_v2 outputs ~128 kbps mp3 (16 KB/s). Approximation is
+// accurate to within a few seconds, which is plenty for queue UI.
+const audioSecondsFromBytes = (bytes) => (bytes && bytes > 0) ? Math.round(bytes / 16000) : null;
+const fmtMin = (s) => (s == null) ? "" : Math.max(1, Math.round(s / 60)) + " min";
+
+// SpaceSC tool registry (mirrors v3 space-nav.js). Relative hrefs assume
+// the artifacts are co-hosted; absolute URLs can be set via Settings later.
+const SPACESC_TOOLS = [
+  { id: "commute",  name: "Commute",   desc: "Audio · listen + learn",          icon: "🎧", href: "/uc3",      active: true },
+  { id: "desk",     name: "Desk",      desc: "Today · inbox · captures",        icon: "🗂",  href: "/desk" },
+  { id: "reading",  name: "Reading",   desc: "Deep read + annotation + chat",   icon: "📖", href: "/reading" },
+  { id: "corpus",   name: "Corpus",    desc: "Search the knowledge base",       icon: "🔍", href: "/corpus" },
+  { id: "insights", name: "Insights",  desc: "Approve or reject claims",        icon: "💎", href: "/insights" },
+  { id: "posture",  name: "Posture",   desc: "Three-domain balance",            icon: "📊", href: "/posture" },
+  { id: "pipeline", name: "Pipeline",  desc: "Ingestion health + errors",       icon: "🩺", href: "/pipeline" },
+  { id: "log",      name: "Build Log", desc: "What shipped, what's next",       icon: "📒", href: "/log" },
+  { id: "feedback", name: "Reports",   desc: "Your 🚩 captures + diagnoses",    icon: "🚩", href: "/feedback" },
+  { id: "map",      name: "System map", desc: "Five use cases · build tree",    icon: "🗺",  href: "/system-map" },
+];
+
+// Notion DB deep links — real IDs from worker/src/index.ts
+const NOTION_LINKS = {
+  oq: "https://www.notion.so/35d4834493df8104b563d9322d6d0f9d",      // OPEN_QUESTIONS_DB_ID
+  gaps: "https://www.notion.so/35ebac9a784141bc91fd224b58feb9a3",   // LEARNING_GAPS_QUEUE_DB_ID
+  parking: "https://www.notion.so/f3a2418b6c9a4ac392ad3df613bf5772", // READING_PARKING_LOT_DB_ID
+  log: "https://www.notion.so/3454834493df81ed972fc524406eeb04",   // PROJECT_LOG_PAGE_ID
+  ingest: "https://www.notion.so/d7494f8b37684ea0b314dbaf1a162f93",  // INGESTION_LOG_DB_ID
+};
+
+const moduleUserState = (m) => {
+  if (m.status === "approved") {
+    if (m.transcript_r2_key && m.audio_r2_key) return "ready";
+    return "audio-cooking";
+  }
+  const briefReady = m.review_brief && m.review_brief.audio_r2_key;
+  if (briefReady) return "brief-ready";
+  return "cooking";
+};
+
+// NAV MENU (top-right pill, jumps to other SpaceSC surfaces)
+function NavMenu() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className={"nav-pill" + (open ? " open" : "")} onClick={() => setOpen(!open)}>
+        <span className="nav-pill-dot"></span>
+        <span>SpaceSC</span>
+        <span className="nav-pill-chev">▼</span>
+      </button>
+      {open && (
+        <>
+          <div className="nav-backdrop" onClick={() => setOpen(false)}></div>
+          <div className="nav-menu">
+            <div className="nav-menu-header">Jump to</div>
+            {SPACESC_TOOLS.map((tool) => (
+              <a key={tool.id}
+                className={"nav-menu-item" + (tool.active ? " active" : "")}
+                href={tool.href}
+                onClick={(e) => { if (tool.active) e.preventDefault(); setOpen(false); }}>
+                <span className="nav-menu-icon">{tool.icon}</span>
+                <span className="nav-menu-text">
+                  <div className="nav-menu-name">{tool.name}</div>
+                  <div className="nav-menu-desc">{tool.desc}</div>
+                </span>
+                {tool.active ? null : <span className="nav-menu-arrow">→</span>}
+              </a>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+// LOGIN
+function LoginPage({ onSaved, initialError }) {
+  const [val, setVal] = useState("");
+  const [err, setErr] = useState(initialError || null);
+  const [verifying, setVerifying] = useState(false);
+
+  const tryToken = async () => {
+    if (!val.trim()) return;
+    setVerifying(true);
+    setErr(null);
+    API.setToken(val.trim());
+    try {
+      // Sanity-check the token by hitting list-gaps (cheap auth probe)
+      await API.listGaps();
+      onSaved();
+    } catch (e) {
+      if (e.code === "AUTH" || (e.message && e.message.includes("401"))) {
+        API.clearToken();
+        setErr("Token rejected. Paste the right one.");
+      } else {
+        // Network or server issue — accept the token but warn the user so
+        // they don't think the empty main app is silently broken.
+        setErr("Saved, but couldn't reach the server. Check your network or try again — you'll land on the home screen anyway.");
+        setTimeout(() => onSaved(), 1200);
+      }
+      setVerifying(false);
+    }
+  };
+
+  return (
+    <div className="app">
+      <div className="login-page">
+        <div className="login-title">SpaceSC Commute</div>
+        <div className="login-sub">Paste your bearer token to begin.</div>
+        <input
+          className="login-input" type="password" placeholder="bearer token"
+          value={val} onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") tryToken(); }}
+          autoFocus
+        />
+        {err && <div style={{ color: "var(--red)", fontSize: 13, marginTop: 10 }}>{err}</div>}
+        <button className="login-btn" onClick={tryToken} disabled={verifying}>
+          {verifying ? "Verifying…" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// SERIES CARD (reused on home + library)
+function SeriesCard({ g, onClick }) {
+  let badge, badgeText;
+  if (g.pipeline_status === "running") { badge = "badge-busy"; badgeText = "generating"; }
+  else if (g.approved_count === g.module_count && g.module_count > 0) { badge = "badge-ok"; badgeText = "all ready"; }
+  else if (g.brief_audio_ready_count > 0) { badge = "badge-warn"; badgeText = `${g.brief_audio_ready_count} brief${g.brief_audio_ready_count === 1 ? "" : "s"} ready`; }
+  else { badge = "badge-muted"; badgeText = g.pipeline_status || "captured"; }
+  return (
+    <div className="card card-tap" onClick={onClick}>
+      <div className="row">
+        <div className="row-main">
+          <div className="row-title">{truncate(g.gap_title, 90)}</div>
+          <div className="row-sub">
+            {g.module_count} episodes · {g.approved_count} approved · {g.brief_audio_ready_count} briefs ready
+          </div>
+          <div className="row-meta">{timeAgo(g.last_created_at)}</div>
+        </div>
+        <span className={"badge " + badge}>{badgeText}</span>
+      </div>
+    </div>
+  );
+}
+
+// ARTICLE ROW (used in Home and Library)
+function ArticleRow({ a, onPlay }) {
+  const priorityClass = (a.priority === "P1") ? "priority-1" : "";
+  // Use real fields from shapeParkingLotRow: source_newsletter, source_email
+  const sourceLine = a.source_newsletter || a.source_email ||
+    (a.article_url ? new URL(a.article_url).hostname.replace(/^www\./, "") : "") || "";
+  const domains = Array.isArray(a.domain) ? a.domain : (a.domain ? [a.domain] : []);
+  const topics = Array.isArray(a.topics) ? a.topics : (a.topics ? [a.topics] : []);
+  return (
+    <div className="card card-tap" onClick={() => onPlay(a)}>
+      <div className="row">
+        <div className="row-main">
+          <div className="row-title">{truncate(a.title || "(untitled)", 90)}</div>
+          {sourceLine && <div className="article-row-source">{sourceLine}</div>}
+          <div className="article-row-domain-chips">
+            {a.priority && <span className={"chip " + priorityClass}>{a.priority}</span>}
+            {domains.slice(0, 2).map((d, i) => <span key={"d" + i} className="chip">{d}</span>)}
+            {topics.slice(0, 2).map((t, i) => <span key={"t" + i} className="chip">{t}</span>)}
+            <span className="chip">{a.status}</span>
+          </div>
+        </div>
+        <button className="play-btn" aria-label={"Play article: " + (a.title || "(untitled)")}>▶</button>
+      </div>
+    </div>
+  );
+}
+
+// D4 — TrackingBanner: shows build progress for a freshly-captured Learning
+// Gap. Polls pipeline-status every 25s. Auto-dismisses once the first brief
+// is playable; user can dismiss manually anytime.
+function TrackingBanner({ record, onPlayBrief, onOpenSeries, onDismiss }) {
+  const [state, setState] = useState({ phase: "loading", modules: [], gapTitle: record.title });
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await API.pipelineStatus(record.gap_id);
+        if (cancelled) return;
+        const mods = (r.modules || []);
+        const briefReady = mods.find(m => m.review_brief && m.review_brief.audio_r2_key);
+        const pipelineStatus = (r.pipeline && r.pipeline.status) || "running";
+        setState({
+          phase: briefReady ? "first-brief-ready" : (mods.length === 0 ? "queued" : "cooking"),
+          modules: mods,
+          briefReady,
+          pipelineStatus,
+          totalModules: mods.length,
+          briefsReady: mods.filter(m => m.review_brief && m.review_brief.audio_r2_key).length,
+          gapTitle: r.gap_title || record.title,
+        });
+      } catch (e) {
+        if (!cancelled) setState((s) => ({ ...s, phase: "error", error: e.message }));
+      }
+    };
+    poll();
+    const t = setInterval(poll, 25_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [record.gap_id]);
+
+  const dismiss = () => onDismiss(record.gap_id);
+
+  // Cap visible age in the banner — if the pipeline has been running >15min
+  // without a brief yet, switch copy to "this is taking longer than usual".
+  const ageMin = Math.round((Date.now() / 1000 - record.started_at) / 60);
+  const TAKING_LONGER_MIN = 30; // pipeline E2E wall is ~28 min per system-map
+
+  if (state.phase === "first-brief-ready" && state.briefReady) {
+    const m = state.briefReady;
+    return (
+      <div style={{ padding: "16px", margin: "0 0 14px 0", borderRadius: "var(--radius)", background: "rgba(59,109,17,.08)", border: "0.5px solid var(--green)" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--green)", marginBottom: 4 }}>🆕 First brief is ready</div>
+            <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+              {state.gapTitle} · {state.briefsReady} of {state.totalModules || "?"} briefs ready
+            </div>
+          </div>
+          <button onClick={dismiss} style={{ background: "none", border: "none", fontSize: 18, color: "var(--ink-mute)", cursor: "pointer" }} aria-label="Dismiss tracker">×</button>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          <button className="play-btn" onClick={() => onPlayBrief(m, state.gapTitle, state.totalModules)}>
+            ▶ Listen now
+          </button>
+          <button className="play-btn-secondary" onClick={() => { dismiss(); onOpenSeries(record.gap_id, state.gapTitle); }}>
+            Open series
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const taking = ageMin > TAKING_LONGER_MIN;
+  return (
+    <div style={{ padding: "14px 16px", margin: "0 0 14px 0", borderRadius: "var(--radius)", background: "var(--bg-sunken)", border: "0.5px solid var(--line-strong)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="spinner" style={{ flexShrink: 0 }}></div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 500 }}>
+            {taking ? "Still building" : "Building your new series"}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>
+            {truncate(state.gapTitle, 80)}
+            {state.totalModules ? ` · ${state.briefsReady} of ${state.totalModules} briefs ready` : taking ? ` · started ${ageMin}m ago` : " · usually takes ~5 minutes"}
+          </div>
+          {state.phase === "error" && <div style={{ fontSize: 11, color: "var(--red)", marginTop: 2 }}>Couldn't check status — will keep trying</div>}
+        </div>
+        <button onClick={dismiss} style={{ background: "none", border: "none", fontSize: 18, color: "var(--ink-mute)", cursor: "pointer" }} aria-label="Dismiss tracker">×</button>
+      </div>
+    </div>
+  );
+}
+
+// HOME
+function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue, onPlayArticle, onPickFromLibrary, onUntrack, onRetry, onPlayDailyBriefing, onRegenerateBriefing }) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [gaps, setGaps] = useState([]);
+  const [due, setDue] = useState([]);
+  const [briefsReady, setBriefsReady] = useState([]);
+  const [articles, setArticles] = useState([]);
+  // Item 2E: today's daily briefing, if generated. 404 means nothing today yet.
+  const [todayBriefing, setTodayBriefing] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    // D6: single batched call for brief-ready modules replaces the
+    // N-round-trip pipelineStatus loop that ran 1× per gap.
+    // Item 2E: also fetch today's daily briefing in parallel (404 → null).
+    Promise.all([
+      API.listGaps().catch(e => ({ _err: e })),
+      API.spacedRepDue().catch(e => ({ _err: e })),
+      API.listArticles({ status_filter: ["Retrieved"], sort: "priority_then_email", limit: 10 }).catch(e => ({ _err: e })),
+      API.listBriefsReady().catch(e => ({ _err: e })),
+      API.todayBriefing().catch(e => ({ _err: e })),
+    ]).then(([gapsRes, dueRes, articlesRes, briefsRes, briefingRes]) => {
+      if (cancelled) return;
+      if (gapsRes._err) { setError(gapsRes._err.message); setLoading(false); return; }
+      const allGaps = (gapsRes.result && gapsRes.result.gaps) || [];
+      const real = allGaps.filter(g => !isLegacyGap(g));
+      setGaps(real);
+      setDue((dueRes.result && dueRes.result.due) || []);
+      if (!articlesRes._err) setArticles(articlesRes.rows || []);
+
+      const rawBriefs = (briefsRes && briefsRes.result && briefsRes.result.briefs) || [];
+      const briefList = rawBriefs
+        .filter(b => !isLegacyGap({ gap_title: b.gap_title || "" }))
+        .slice(0, 6)
+        .map(b => ({
+          moduleId: b.module_id,
+          title: truncate(b.learning_objective, 80),
+          voiceId: b.voice_id,
+          series: b.gap_title,
+          gapId: b.gap_id,
+          position: b.position,
+          totalPositions: b.total_in_series,
+          durationSec: audioSecondsFromBytes(b.brief_audio_bytes),
+        }));
+      setBriefsReady(briefList);
+      // Item 2E: today's briefing row (any non-error status — ready, generating,
+      // or failed). Tile renderer handles each state distinctly so generation
+      // failures don't disappear silently (F14 lesson).
+      const briefingRow = briefingRes && !briefingRes._err && briefingRes.result
+        ? briefingRes.result
+        : null;
+      setTodayBriefing(briefingRow);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [refreshKey]);
+
+  // B6: auto-poll while the briefing is mid-generation so the user doesn't
+  // have to manually refresh to see it flip to 'ready'. Same pattern as N2.
+  useEffect(() => {
+    if (!todayBriefing || todayBriefing.status !== "generating") return;
+    let cancelled = false;
+    const t = setInterval(() => {
+      API.todayBriefing()
+        .then((r) => { if (!cancelled && r && r.result) setTodayBriefing(r.result); })
+        .catch(() => {});
+    }, 30_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [todayBriefing && todayBriefing.status]);
+
+  if (loading) return <div className="page"><div className="empty"><div className="empty-icon">⏳</div>Loading your day…</div></div>;
+  if (error) {
+    const isAuth = /unauthorized|401|403|no token/i.test(error);
+    return (
+      <div className="page">
+        <div className="empty">
+          <div className="empty-icon">⚠</div>
+          Couldn't load: {error}
+          <br/>
+          {isAuth ? "Open Settings to paste a fresh token." : "Try again in a moment — the server may be slow."}
+          <div style={{ marginTop: 14, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+            <button className="play-btn-secondary" onClick={onRetry}>↻ Retry</button>
+            {isAuth ? null : <button className="play-btn-secondary" onClick={() => window.location.reload()}>Reload page</button>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const queueLength = briefsReady.length + due.length + articles.length;
+  // D5: real durations for briefs (from audio_bytes); rough estimates for
+  // due re-listens and articles since neither carries duration metadata yet.
+  const briefSec = briefsReady.reduce((acc, b) => acc + (b.durationSec || 300), 0);
+  const queueSec = briefSec + (due.length * 600) + (articles.length * 360);
+  const queueMin = Math.round(queueSec / 60);
+
+  return (
+    <div className="page">
+      {/* Item 2E: today's auto-assembled audio briefing — when ready, sits
+          above everything else as the first thing Campbell sees in the morning.
+          Three states surface distinctly (F14: never silent on failure). */}
+      {todayBriefing && todayBriefing.status === "ready" && todayBriefing.audio_r2_key && (
+        <div className="card card-tap" style={{ marginBottom: 12, borderColor: "var(--accent)", background: "linear-gradient(135deg, rgba(24,95,165,0.06), rgba(24,95,165,0.02))" }}
+             onClick={() => onPlayDailyBriefing && onPlayDailyBriefing(todayBriefing)}>
+          <div className="row">
+            <div className="row-main">
+              <div className="row-title">🌅 Today's briefing</div>
+              <div className="row-sub">
+                {todayBriefing.audio_bytes ? fmtMin(audioSecondsFromBytes(todayBriefing.audio_bytes)) : "~5 min"}
+                {todayBriefing.source_summary && typeof todayBriefing.source_summary === "object"
+                  ? ` · ${todayBriefing.source_summary.ingest_count || 0} new items synthesized`
+                  : ""}
+              </div>
+              <div className="row-meta">Read by {voiceName(todayBriefing.voice_id)}</div>
+            </div>
+            <button className="play-btn" aria-label="Play today's briefing">▶</button>
+          </div>
+        </div>
+      )}
+      {todayBriefing && todayBriefing.status === "generating" && (
+        <div className="card" style={{ marginBottom: 12, background: "var(--bg-sunken)", borderColor: "var(--line-strong)" }}>
+          <div className="row">
+            <div className="spinner" style={{ flexShrink: 0, marginLeft: 4 }}></div>
+            <div className="row-main">
+              <div className="row-title">🌅 Today's briefing is being assembled</div>
+              <div className="row-sub">Synthesizing overnight changes · usually ready in a few minutes</div>
+            </div>
+          </div>
+        </div>
+      )}
+      {todayBriefing && todayBriefing.status === "failed" && (
+        <div className="card" style={{ marginBottom: 12, background: "rgba(163,45,45,.06)", borderColor: "var(--red)" }}>
+          <div className="row">
+            <div className="row-main">
+              <div className="row-title" style={{ color: "var(--red)" }}>⚠ Today's briefing couldn't be assembled</div>
+              <div className="row-sub">{todayBriefing.last_error ? `Reason: ${truncate(todayBriefing.last_error, 100)}` : "Something went wrong overnight."}</div>
+              <div style={{ marginTop: 10 }}>
+                <button className="play-btn-secondary" onClick={() => onRegenerateBriefing && onRegenerateBriefing()}>
+                  ↻ Try regenerating
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* D4: tracking banners for in-flight learning gap pipelines */}
+      {(tracked || []).map((rec) => (
+        <TrackingBanner
+          key={rec.gap_id}
+          record={rec}
+          onPlayBrief={(m, gapTitle, total) => onPlayBrief(m.id, truncate(m.learning_objective, 80), gapTitle, m.review_brief && m.review_brief.voice_id, rec.gap_id, m.position, total)}
+          onOpenSeries={onOpenSeries}
+          onDismiss={onUntrack}
+        />
+      ))}
+      {queueLength > 0 ? (
+        <div className="queue-tile">
+          <div className="queue-label">Today's drive</div>
+          <div className="queue-title">
+            {[
+              articles.length > 0 && `${articles.length} article${articles.length === 1 ? "" : "s"}`,
+              briefsReady.length > 0 && `${briefsReady.length} brief${briefsReady.length === 1 ? "" : "s"}`,
+              due.length > 0 && `${due.length} re-listen${due.length === 1 ? "" : "s"}`,
+            ].filter(Boolean).join(" · ")}
+          </div>
+          <div className="queue-line">~{queueMin} min total</div>
+          <div className="queue-buttons">
+            <button className="queue-play" onClick={() => {
+              if (articles.length > 0) onPlayArticle(articles[0]);
+              else if (briefsReady.length > 0) {
+                const b = briefsReady[0];
+                onPlayBrief(b.moduleId, b.title, b.series, b.voiceId, b.gapId, b.position, b.totalPositions);
+              } else if (due.length > 0) {
+                onPlayDue(due[0]);
+              }
+            }}>▶ Start drive</button>
+            <button className="queue-play" style={{ background: "transparent", color: "var(--bg-elev)", border: "0.5px solid rgba(255,255,255,0.3)" }} onClick={onPickFromLibrary}>
+              📋 Pick from library
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="empty">
+          <div className="empty-icon">🚗</div>
+          Nothing queued for today. Capture a learning gap from the desk or wait for new ingests.
+        </div>
+      )}
+
+      {articles.length > 0 && (
+        <>
+          <div className="section first">
+            <div className="section-icon">📰</div>
+            <div className="section-title">Articles to listen</div>
+            <div className="section-meta">{articles.length}</div>
+          </div>
+          {articles.map((a) => <ArticleRow key={a.page_id} a={a} onPlay={onPlayArticle} />)}
+        </>
+      )}
+
+      {briefsReady.length > 0 && (
+        <>
+          <div className={articles.length === 0 ? "section first" : "section"}>
+            <div className="section-icon">🆕</div>
+            <div className="section-title">Briefs waiting for your verdict</div>
+            <div className="section-meta">{briefsReady.length}</div>
+          </div>
+          {briefsReady.map((b) => (
+            <div key={b.moduleId} className="card card-tap" onClick={() => onPlayBrief(b.moduleId, b.title, b.series, b.voiceId, b.gapId, b.position, b.totalPositions)}>
+              <div className="row">
+                <div className="row-main">
+                  <div className="row-title">{b.title}</div>
+                  <div className="row-sub">{b.series} · Episode {b.position} of {b.totalPositions}</div>
+                  <div className="row-meta">Brief · {b.durationSec ? fmtMin(b.durationSec) : "~5 min"} · Read by {voiceName(b.voiceId)}</div>
+                </div>
+                <button className="play-btn" aria-label={"Play brief: " + b.title}>▶ Brief</button>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {due.length > 0 && (
+        <>
+          <div className="section">
+            <div className="section-icon">🔴</div>
+            <div className="section-title">Due for re-listen</div>
+            <div className="section-meta">{due.length}</div>
+          </div>
+          {due.map((d) => (
+            <div key={d.id} className="card card-tap" onClick={() => onPlayDue(d)}>
+              <div className="row">
+                <div className="row-main">
+                  <div className="row-title">{truncate(d.learning_objective, 80)}</div>
+                  <div className="row-sub">Cadence {d.cadence} · due {timeAgo(d.due_at)}</div>
+                </div>
+                <button className="play-btn" aria-label={"Play due re-listen: " + truncate(d.learning_objective, 60)}>▶</button>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      <div className="section">
+        <div className="section-icon">📚</div>
+        <div className="section-title">All series</div>
+        <div className="section-meta">{gaps.length}</div>
+      </div>
+      {gaps.slice(0, 3).map((g) => (
+        <SeriesCard key={g.gap_id} g={g} onClick={() => onOpenSeries(g.gap_id, g.gap_title)} />
+      ))}
+      {gaps.length > 3 && (
+        <div style={{ textAlign: "center", marginTop: 10 }}>
+          <button className="play-btn-secondary" onClick={onPickFromLibrary}>
+            See all {gaps.length} series →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// LIBRARY (with Articles | Series subtabs)
+function LibraryScreen({ refreshKey, onOpenSeries, onPlayArticle, initialSubTab }) {
+  const [subTab, setSubTab] = useState(initialSubTab || "articles");
+  const [loading, setLoading] = useState(true);
+  const [gaps, setGaps] = useState([]);
+  const [articles, setArticles] = useState([]);
+  const [statusFilter, setStatusFilter] = useState("Retrieved");
+  const [showLegacy, setShowLegacy] = useState(false);
+  const [error, setError] = useState(null);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    if (subTab === "series") {
+      API.listGaps()
+        .then((r) => { if (cancelled) return; setGaps((r.result && r.result.gaps) || []); setLoading(false); })
+        .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
+    } else {
+      API.listArticles({ status_filter: [statusFilter], sort: "priority_then_email", limit: 60 })
+        .then((r) => { if (cancelled) return; setArticles(r.rows || []); setLoading(false); })
+        .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
+    }
+    return () => { cancelled = true; };
+  }, [refreshKey, subTab, statusFilter]);
+
+  const real = gaps.filter(g => !isLegacyGap(g));
+  const legacy = gaps.filter(isLegacyGap);
+  // R9.1: client-side text search. Articles match against title +
+  // source_newsletter + source_email + domain + topics. Series match
+  // against gap_title + first_module_objective.
+  const q = query.trim().toLowerCase();
+  const inText = (s) => (typeof s === "string" ? s.toLowerCase().includes(q) : false);
+  const filteredArticles = !q ? articles : articles.filter(a =>
+    inText(a.title) || inText(a.source_newsletter) || inText(a.source_email) ||
+    (Array.isArray(a.domain) && a.domain.some(d => inText(d))) ||
+    (Array.isArray(a.topics) && a.topics.some(t => inText(t)))
+  );
+  const baseSeries = showLegacy ? gaps : real;
+  const filteredSeries = !q ? baseSeries : baseSeries.filter(g =>
+    inText(g.gap_title) || inText(g.first_module_objective)
+  );
+  const shownSeries = filteredSeries;
+
+  return (
+    <div className="page">
+      <div className="subtabs">
+        <button className={"subtab" + (subTab === "articles" ? " active" : "")} onClick={() => setSubTab("articles")}>📰 Articles</button>
+        <button className={"subtab" + (subTab === "series" ? " active" : "")} onClick={() => setSubTab("series")}>🎓 Series</button>
+      </div>
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={subTab === "articles" ? "Search title, source, domain, topic…" : "Search series title…"}
+        aria-label="Search library"
+        style={{ width: "100%", padding: "10px 14px", borderRadius: 999, border: "0.5px solid var(--line)", background: "var(--bg-sunken)", fontSize: 14, marginBottom: 14, color: "var(--ink)" }}
+      />
+
+      {loading ? <div className="empty"><div className="spinner"></div></div>
+       : error ? <div className="empty">⚠ {error}</div>
+       : subTab === "articles" ? (
+        <>
+          <div className="subtabs" style={{ marginBottom: 14 }}>
+            {[
+              { value: "Retrieved", label: "Queued" },
+              { value: "Listened",  label: "Listened" },
+              { value: "New",       label: "New" },
+              { value: "Ingest",    label: "To ingest" },
+            ].map((s) => (
+              <button key={s.value} className={"subtab" + (statusFilter === s.value ? " active" : "")} onClick={() => setStatusFilter(s.value)}>{s.label}</button>
+            ))}
+          </div>
+          {filteredArticles.length === 0 ? (
+            <div className="empty"><div className="empty-icon">📰</div>{q ? "No articles match \"" + query + "\"." : "No articles with status \"" + statusFilter + "\"."}</div>
+          ) : (
+            filteredArticles.map((a) => <ArticleRow key={a.page_id} a={a} onPlay={onPlayArticle} />)
+          )}
+        </>
+      ) : (
+        <>
+          {shownSeries.length === 0 ? (
+            <div className="empty"><div className="empty-icon">🎓</div>No series yet. Capture a learning gap to start one.</div>
+          ) : (
+            <>
+              <div className="section first">
+                <div className="section-icon">🎓</div>
+                <div className="section-title">Your series</div>
+                <div className="section-meta">{shownSeries.length}</div>
+              </div>
+              {shownSeries.map((g) => (
+                <SeriesCard key={g.gap_id} g={g} onClick={() => onOpenSeries(g.gap_id, g.gap_title)} />
+              ))}
+              {legacy.length > 0 && (
+                <div style={{ marginTop: 18, textAlign: "center" }}>
+                  <button className="play-btn-secondary" onClick={() => setShowLegacy(!showLegacy)}>
+                    {showLegacy ? `Hide ${legacy.length} older` : `Show ${legacy.length} older series`}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// MODULE CARD
+function ModuleCard({ m, totalPositions, onPlayBrief, onPlayModule, onRegenerate, showToast }) {
+  const state = moduleUserState(m);
+  const briefAvail = !!(m.review_brief && m.review_brief.audio_r2_key);
+  const fullAvail = !!m.audio_r2_key;
+  // §voice-fix-2: prefer module.voice_id (the rotation-assigned voice) over
+  // brief.voice_id (which can be stale on pre-rotation modules where the
+  // brief was generated with the W6 default). Falls back to brief voice_id,
+  // then position-based rotation pick if neither is set.
+  const voiceId = m.voice_id
+    || (m.review_brief && m.review_brief.voice_id)
+    || pickVoiceFor(String(m.position || 0));
+  const briefVoiceId = m.review_brief && m.review_brief.voice_id;
+  // Flag a divergence so the user can see when brief audio was generated in
+  // a different voice than the module's current voice_id. Happens for
+  // pre-rotation modules where the brief is in Antoni but voice_id is now
+  // the rotation pick (e.g. Rachel for pos 2). The Regenerate button below
+  // lets the user resolve the mismatch.
+  const voiceMismatch = briefVoiceId && m.voice_id && briefVoiceId !== m.voice_id;
+  const [regenerating, setRegenerating] = React.useState(false);
+  const handleRegen = async () => {
+    if (!onRegenerate) return;
+    setRegenerating(true);
+    try { await onRegenerate(m.id, voiceId); }
+    catch (e) { showToast && showToast("Regenerate failed: " + e.message); }
+    finally { setRegenerating(false); }
+  };
+
+  let stateLine = null, badge = null;
+  switch (state) {
+    case "cooking":
+      badge = <span className="badge badge-busy">generating</span>;
+      stateLine = <div className="state-line pulse">Episode being generated. The brief will appear here when ready.</div>;
+      break;
+    case "brief-ready":
+      badge = <span className="badge badge-warn">brief ready</span>;
+      stateLine = <div className="state-line">Listen to the brief, then approve to unlock the full episode.</div>;
+      break;
+    case "audio-cooking":
+      badge = <span className="badge badge-busy">audio coming</span>;
+      stateLine = <div className="state-line pulse">Approved. Full audio is generating — about 2 minutes.</div>;
+      break;
+    case "ready":
+      badge = <span className="badge badge-ok">ready</span>;
+      break;
+    default:
+      // F8 mitigation: surface the real upstream status with plain-English
+      // copy and a "what now" line, rather than a bare "unknown" grey.
+      if (m.status === "revision-requested") {
+        badge = <span className="badge badge-warn">needs revision</span>;
+        stateLine = <div className="state-line">Your feedback is being applied to this episode. It'll move back to "brief ready" when the rewrite is done.</div>;
+      } else if (m.status === "failed" || m.status === "error") {
+        badge = <span className="badge badge-bad">build failed</span>;
+        stateLine = <div className="state-line">Something went wrong building this episode. Try voice-reacting "rebuild" or check the pipeline page.</div>;
+      } else {
+        badge = <span className="badge badge-muted">{m.status || "unknown"}</span>;
+        stateLine = <div className="state-line">This episode is in an unrecognized state. Check the pipeline page for details.</div>;
+      }
+  }
+
+  return (
+    <div className="card">
+      <div className="row">
+        <div className="row-main">
+          <div className="row-title">{m.learning_objective}</div>
+          <div className="row-sub">Episode {m.position} of {totalPositions} · Read by {voiceName(voiceId)}{voiceMismatch && <span style={{ color: "var(--accent-warm)", marginLeft: 8 }}> · brief in {voiceName(briefVoiceId)} (regenerate to align)</span>}</div>
+        </div>
+        {badge}
+      </div>
+      {stateLine}
+      {/* §voice-fix-4: surface audio_last_error so quota/auth/upstream failures
+          stop being invisible. Without this the user sees an endless
+          "audio coming…" with no signal that the queue retry is failing on
+          every attempt. Pattern-matches the most common errors to plain English. */}
+      {m.audio_last_error && (() => {
+        const err = m.audio_last_error;
+        let humanMsg = err.slice(0, 200);
+        if (/quota_exceeded|exceeds your quota|credits remaining/i.test(err)) {
+          humanMsg = "ElevenLabs TTS quota exhausted. Top up the plan at elevenlabs.io to resume audio generation.";
+        } else if (/401|unauthorized|invalid_api_key/i.test(err)) {
+          humanMsg = "ElevenLabs auth failed. The API key may need rotation.";
+        }
+        return (
+          <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(255,180,100,0.08)", borderLeft: "3px solid var(--accent-warm)", borderRadius: 4, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.4 }}>
+            <strong style={{ color: "var(--accent-warm)" }}>⚠ Audio generation failed</strong>
+            <div style={{ marginTop: 4 }}>{humanMsg}</div>
+            {m.audio_attempts_count > 1 && (
+              <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>{m.audio_attempts_count} attempts · last {timeAgo(m.audio_last_attempt_at)}</div>
+            )}
+          </div>
+        );
+      })()}
+      <div className="module-actions">
+        {briefAvail ? (
+          <button className="play-btn-secondary" onClick={onPlayBrief}>▶ Brief · ~5m</button>
+        ) : (
+          <button className="play-btn-secondary" disabled>🎙 Brief generating…</button>
+        )}
+        {fullAvail ? (
+          <button className="play-btn" onClick={onPlayModule}>▶ Episode · ~10m</button>
+        ) : state === "audio-cooking" ? (
+          <button className="play-btn" disabled>⏳ Audio coming…</button>
+        ) : state === "brief-ready" ? (
+          <button className="play-btn" disabled>🔒 Approve to unlock</button>
+        ) : (
+          <button className="play-btn" disabled>—</button>
+        )}
+        {/* §voice-fix-3: per-module regenerate-in-voice. Async via queue so it
+            doesn't block; user can keep working. Shows the target voice so the
+            action is honest about what'll change. */}
+        {(briefAvail || fullAvail) && onRegenerate && (
+          <button className="play-btn-secondary" onClick={handleRegen} disabled={regenerating} title="Regenerate the full episode audio in the current rotation voice">
+            {regenerating ? "Queuing…" : `🔄 Regenerate in ${voiceName(voiceId)}`}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// SERIES DETAIL
+function SeriesScreen({ gapId, gapTitle, refreshKey, onPlayBrief, onPlayModule, onRegenerate, showToast }) {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    API.pipelineStatus(gapId).then((r) => { if (cancelled) return; setData(r); setLoading(false); })
+      .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [gapId, refreshKey]);
+
+  // N2: while any module is mid-cook (cooking | audio-cooking | needs revision)
+  // OR brief audio for any module isn't yet rendered, re-fetch pipeline-status
+  // every 25s so the user doesn't need to reload to see progress.
+  useEffect(() => {
+    if (!data) return;
+    const mods = data.modules || [];
+    const anyCooking = mods.some(m => {
+      const st = moduleUserState(m);
+      return st === "cooking" || st === "audio-cooking";
+    });
+    if (!anyCooking) return;
+    let cancelled = false;
+    const t = setInterval(() => {
+      API.pipelineStatus(gapId).then((r) => { if (!cancelled) setData(r); }).catch(() => {});
+    }, 25_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [gapId, data]);
+
+  if (loading) return <div className="page"><div className="empty"><div className="spinner"></div></div></div>;
+  if (error) return <div className="page"><div className="empty">⚠ {error}</div></div>;
+  if (!data) return null;
+
+  const mods = data.modules || [];
+  const total = mods.length;
+  const approved = mods.filter(m => m.status === "approved").length;
+  const fullAudioReady = mods.filter(m => m.audio_r2_key).length;
+  const startedTs = data.pipeline && data.pipeline.started_at;
+
+  return (
+    <div className="page">
+      <div className="section first"><div className="section-title">Series state</div></div>
+      <div className="card" style={{ padding: 16 }}>
+        <div style={{ fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+          <strong>{total} episodes</strong>
+          {` · ${approved} approved · ${fullAudioReady} ready to listen`}
+          {fullAudioReady === total && total > 0 && (
+            <span style={{ color: "var(--green)", marginLeft: 6 }}>· all set for your drive</span>
+          )}
+          {approved > fullAudioReady && (
+            <span style={{ color: "var(--accent-warm)", marginLeft: 6 }}>· {approved - fullAudioReady} audio still generating</span>
+          )}
+        </div>
+      </div>
+
+      {/* "Where this came from" — gap origin context */}
+      <div className="section"><div className="section-title">Where this came from</div></div>
+      <div className="card" style={{ padding: 16 }}>
+        <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+          <div><strong>Captured:</strong> {startedTs ? timeAgo(startedTs) + " (" + new Date(startedTs * 1000).toLocaleDateString() + ")" : "—"}</div>
+          <div style={{ marginTop: 8 }}>
+            {/* D3: deep-link to the specific gap row when notion_page_id is
+                available; fall back to the whole queue otherwise. */}
+            {data.notion_page_id ? (
+              <a href={"https://www.notion.so/" + String(data.notion_page_id).replace(/-/g, "")} target="_blank" style={{ color: "var(--accent)", fontSize: 13 }}>
+                Open this gap in Notion →
+              </a>
+            ) : (
+              <a href={NOTION_LINKS.gaps} target="_blank" style={{ color: "var(--accent)", fontSize: 13 }}>
+                Open the Learning Gaps Queue in Notion →
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="section"><div className="section-title">Episodes</div></div>
+      {mods.map((m) => (
+        <ModuleCard
+          key={m.id} m={m} totalPositions={total}
+          onPlayBrief={() => onPlayBrief(m.id, truncate(m.learning_objective, 80), m.voice_id || (m.review_brief && m.review_brief.voice_id), m.position, total)}
+          onPlayModule={() => onPlayModule(m.id, truncate(m.learning_objective, 80), m.voice_id || (m.review_brief && m.review_brief.voice_id), m.position, total)}
+          onRegenerate={onRegenerate}
+          showToast={showToast}
+        />
+      ))}
+    </div>
+  );
+}
+
+// CAPTURES — D2: unified "from today" timeline across errata + gaps + OQs,
+// plus deep-link panel to ledgers that live elsewhere (insights, RNs, full
+// queues). Lets the user verify mid-commute captures landed without leaving
+// the surface that captured them.
+const CAPTURE_TYPE_META = {
+  errata:  { icon: "🚩", label: "Flagged claim" },
+  gap:     { icon: "🎓", label: "Learning gap" },
+  oq:      { icon: "❓", label: "Open question" },
+  insight: { icon: "💡", label: "Insight" },
+  rn:      { icon: "📝", label: "Research note" },
+};
+
+function CapturesScreen({ refreshKey, onJump }) {
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState([]);
+  const [counts, setCounts] = useState({ errata: 0, gap: 0, oq: 0, insight: 0, rn: 0 });
+  const [error, setError] = useState(null);
+  // Item 4B: pending list — items the user just captured locally that the
+  // server hasn't confirmed yet. Re-read from localStorage on every refresh
+  // so newly-submitted entries surface immediately.
+  const [pending, setPending] = useState(() => pendingLoad());
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    // Pull the latest local pending queue every refresh — a sheet submit
+    // may have happened since the last mount.
+    setPending(pendingLoad());
+    API.capturesToday()
+      .then((r) => {
+        if (cancelled) return;
+        const res = (r && r.result) || {};
+        const serverItems = res.items || [];
+        setItems(serverItems);
+        setCounts(res.counts || { errata: 0, gap: 0, oq: 0, insight: 0, rn: 0 });
+        // Prune any local pending that now matches a server item (by
+        // type + first-60-chars-normalized fingerprint). Keep the rest as
+        // still-syncing, with the 24h auto-expiry built into pendingLoad.
+        setPending(pendingPrune(serverItems));
+        setLoading(false);
+      })
+      .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [refreshKey]);
+
+  // Item 4B: merge server + pending into a single chronological timeline.
+  // Pending items render with a "syncing…" badge and are non-clickable until
+  // their server-side copy lands.
+  const mergedItems = [
+    ...items,
+    ...pending.map(p => ({
+      type: p.type,
+      id: p.local_id,
+      content: p.content,
+      created_at: p.created_at,
+      _pending: true,
+    })),
+  ].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+
+  return (
+    <div className="page">
+      {/* From today — unified timeline */}
+      <div className="section first">
+        <div className="section-icon">📅</div>
+        <div className="section-title">From the last 24 hours</div>
+        <div className="section-meta">{items.length}</div>
+      </div>
+      {loading ? <div className="empty"><div className="spinner"></div></div>
+       : error ? (
+         <div className="empty">
+           ⚠ {error}
+           <div style={{ marginTop: 12 }}>
+             <button className="play-btn-secondary" onClick={() => { setError(null); setLoading(true); API.capturesToday().then((r) => { const res = (r && r.result) || {}; setItems(res.items || []); setCounts(res.counts || {}); setLoading(false); }).catch((e) => { setError(e.message); setLoading(false); }); }}>↻ Retry</button>
+           </div>
+         </div>
+       )
+       : mergedItems.length === 0 ? (
+        <div className="empty"><div className="empty-icon">💭</div>Nothing captured yet today. Tap any capture button mid-commute (flag, insight, note, question, learn) and it'll appear here.</div>
+      ) : (
+        mergedItems.map((item) => {
+          const meta = CAPTURE_TYPE_META[item.type] || { icon: "•", label: item.type };
+          // Pending items (Item 4B) are non-clickable — they don't have a
+          // server-side URL yet. Errata → in-player jump. Insight → /insights.
+          // Gap / OQ / RN → Notion page URL (when synced).
+          const onClick = item._pending
+            ? undefined
+            : item.type === "errata"
+              ? () => onJump(item.module_id, item.timestamp_seconds || 0)
+              : item.type === "insight"
+                ? () => window.open("/insights", "_blank")
+                : (item.url ? () => window.open(item.url, "_blank") : undefined);
+          return (
+            <div key={item.id} className={"card" + (onClick ? " card-tap" : "")} onClick={onClick} style={item._pending ? { opacity: 0.78 } : undefined}>
+              <div className="row">
+                <div className="row-main">
+                  <div className="row-title">{truncate(item.content || "(empty)", 130)}</div>
+                  <div className="row-sub">
+                    {meta.icon} {meta.label}
+                    {item.type === "errata" && item.module_id ? ` · Module ${item.module_id} at ${fmtTime(item.timestamp_seconds || 0)}` : null}
+                    {item._pending ? <span style={{ marginLeft: 8, fontSize: 11, padding: "1px 7px", borderRadius: 10, border: "0.5px solid var(--accent-warm)", color: "var(--accent-warm)" }}>syncing…</span> : null}
+                  </div>
+                  <div className="row-meta">{timeAgo(item.created_at)}</div>
+                </div>
+                {onClick ? <span className="row-chevron">↗</span> : null}
+              </div>
+            </div>
+          );
+        })
+      )}
+
+      {/* Deep-link panel — always visible for ledgers that live outside today's view */}
+      <div className="section">
+        <div className="section-icon">📂</div>
+        <div className="section-title">Open a ledger</div>
+      </div>
+      <div className="card">
+        <a className="capture-link" href="/insights">
+          <div className="capture-link-icon">💡</div>
+          <div className="capture-link-text">
+            <div className="capture-link-name">Insights</div>
+            <div className="capture-link-desc">Approve or reject pending claims · all-time</div>
+          </div>
+          <span className="capture-link-arrow">→</span>
+        </a>
+        <div className="capture-link" style={{ borderTop: "0.5px solid var(--line)" }}>
+          <div className="capture-link-icon">📝</div>
+          <div className="capture-link-text">
+            <div className="capture-link-name">Research notes</div>
+            <div className="capture-link-desc">Bundled question + reasoning + sources</div>
+          </div>
+          <span className="capture-link-arrow muted">soon</span>
+        </div>
+        <a className="capture-link" href={NOTION_LINKS.oq} target="_blank" style={{ borderTop: "0.5px solid var(--line)" }}>
+          <div className="capture-link-icon">❓</div>
+          <div className="capture-link-text">
+            <div className="capture-link-name">Open questions queue</div>
+            <div className="capture-link-desc">In Notion · all-time triage and answer</div>
+          </div>
+          <span className="capture-link-arrow">↗</span>
+        </a>
+        <a className="capture-link" href={NOTION_LINKS.gaps} target="_blank" style={{ borderTop: "0.5px solid var(--line)" }}>
+          <div className="capture-link-icon">🎓</div>
+          <div className="capture-link-text">
+            <div className="capture-link-name">Things to learn queue</div>
+            <div className="capture-link-desc">In Notion · all-time pending series</div>
+          </div>
+          <span className="capture-link-arrow">↗</span>
+        </a>
+      </div>
+    </div>
+  );
+}
+
+// MINI PLAYER
+function MiniPlayer({ playing, audioRef, onExpand, onStop }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const updP = () => setIsPlaying(!a.paused);
+    a.addEventListener("play", updP); a.addEventListener("pause", updP);
+    updP();
+    return () => { a.removeEventListener("play", updP); a.removeEventListener("pause", updP); };
+  }, []);
+  const toggle = (e) => {
+    e.stopPropagation();
+    const a = audioRef.current; if (!a) return;
+    if (a.paused) a.play(); else a.pause();
+  };
+  return (
+    <div className="mini-player">
+      <div className="mini-info" onClick={onExpand}>
+        <div className="mini-title">{playing.title}</div>
+        <div className="mini-sub">{playing.kind === "brief" ? "Brief" : "Episode"} · {playing.series}</div>
+      </div>
+      <button className="mini-btn" onClick={toggle} aria-label={isPlaying ? "Pause" : "Play"}>{isPlaying ? "⏸" : "▶"}</button>
+      <button className="mini-btn" onClick={(e) => { e.stopPropagation(); onStop(); }} aria-label="Stop and close player">×</button>
+    </div>
+  );
+}
+
+// FLAG SHEET
+function FlagSheet({ moduleId, timestamp, onClose, onDone, showToast }) {
+  const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const submit = async () => {
+    if (!notes.trim()) return;
+    setSubmitting(true);
+    try {
+      await API.flagClaim({ module_id: moduleId, timestamp_seconds: timestamp, notes: notes.trim() });
+      // Item 4C: instant Captures-tab visibility before captures-today refetch.
+      try { pendingAdd("errata", notes.trim()); } catch (_) {}
+      onDone();
+    } catch (e) {
+      showToast && showToast("Flag failed: " + e.message);
+      setSubmitting(false);
+    }
+  };
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-handle"></div>
+        <div className="sheet-title">🚩 Flag a claim</div>
+        <div className="sheet-sub">At {fmtTime(timestamp)} — what's wrong with what you just heard?</div>
+        <textarea className="sheet-input" placeholder="The 2008 number sounded off — was it 700B or 800B?" value={notes} onChange={(e) => setNotes(e.target.value)} autoFocus />
+        <div className="sheet-buttons">
+          <button className="sheet-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="sheet-btn-primary" onClick={submit} disabled={submitting || !notes.trim()}>{submitting ? "Saving…" : "Save flag"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// REACT SHEET
+function ReactSheet({ moduleId, onClose, onDone, showToast }) {
+  const [phase, setPhase] = useState("idle");
+  const [transcript, setTranscript] = useState("");
+  const [stage, setStage] = useState("");
+  const recogRef = useRef(null);
+
+  const hasSpeech = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  const startRecord = () => {
+    if (!hasSpeech) { setPhase("review"); return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const r = new SR();
+    r.continuous = true; r.interimResults = true; r.lang = "en-US";
+    let final = "";
+    r.onresult = (e) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) final += t + " ";
+        else interim += t;
+      }
+      setTranscript((final + interim).trim());
+    };
+    r.onerror = () => setPhase("review");
+    r.onend = () => setPhase("review");
+    recogRef.current = r;
+    try { r.start(); setPhase("recording"); } catch (_) { setPhase("review"); }
+  };
+
+  const stopRecord = () => { if (recogRef.current) { try { recogRef.current.stop(); } catch (_) {} } setPhase("review"); };
+
+  useEffect(() => {
+    if (hasSpeech) startRecord();
+    return () => { if (recogRef.current) try { recogRef.current.stop(); } catch (_) {} };
+  }, []);
+
+  // Voice "approve" shortcut: if the transcript is a clean approve, skip NLU
+  // and fire the fast /api/uc3/module-approve path (~1s instead of 3-8 min).
+  const APPROVE_ONLY = /^\s*(approve\.?|approve it\.?|just approve\.?|yes approve\.?|sounds good\.?|approve this\.?|approved\.?)\s*$/i;
+
+  const submit = async () => {
+    const t = transcript.trim();
+    if (!t) return;
+    // Short-circuit: voice "approve" → quick approve path
+    if (APPROVE_ONLY.test(t)) {
+      setPhase("submitting");
+      setStage("Approving…");
+      try {
+        await API.approve(moduleId);
+        onDone("Approved by voice.");
+      } catch (e) {
+        showToast && showToast("Approve failed: " + e.message);
+        setPhase("review");
+      }
+      return;
+    }
+    setPhase("submitting");
+    const stages = ["Parsing your reaction…", "Routing actions…", "Updating the episode…"];
+    let i = 0; setStage(stages[0]);
+    const stageTimer = setInterval(() => { i = (i + 1) % stages.length; setStage(stages[i]); }, 4000);
+    try {
+      const r = await API.reactFeedback(moduleId, t);
+      clearInterval(stageTimer);
+      const actions = (r.result && r.result.parsed && r.result.parsed.actions) || [];
+      const results = (r.result && r.result.dispatch && r.result.dispatch.results) || [];
+      const failed = results.filter((x) => x && x.ok === false).length;
+      // F14 mitigation: 207 partial dispatches surface as `_partial: true` in
+      // the api helper. The pre-F14 version reported "N actions" regardless of
+      // how many actually applied, so the user thought their full intent landed
+      // even when half of it was dropped.
+      if (r._partial || failed > 0) {
+        onDone(`Reaction processed — ${failed} of ${actions.length} actions couldn't apply. Check the series page.`);
+      } else {
+        onDone(`Reaction processed: ${actions.length} action${actions.length === 1 ? "" : "s"}`);
+      }
+    } catch (e) {
+      clearInterval(stageTimer);
+      showToast && showToast("Reaction failed: " + e.message);
+      setPhase("review");
+    }
+  };
+
+  return (
+    <div className="sheet-backdrop" onClick={() => phase !== "submitting" && onClose()}>
+      <div className="sheet" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-handle"></div>
+        <div className="sheet-title">🎙 React to this</div>
+        {phase === "recording" && (
+          <>
+            <div className="sheet-sub">Speak your reaction. Tap to stop.</div>
+            <div className="sheet-record-wrap">
+              <button className="sheet-record-btn recording" onClick={stopRecord} aria-label="Stop recording">⏹</button>
+              <div className="sheet-record-hint">Recording…</div>
+            </div>
+            <textarea className="sheet-input" value={transcript} readOnly placeholder="…" />
+          </>
+        )}
+        {phase === "review" && (
+          <>
+            <div className="sheet-sub">Edit if needed, then submit. Processing can take 3–8 minutes.</div>
+            <textarea className="sheet-input" placeholder="e.g. Approve this. But fix the SEC date — I think it's 45 days, not 40." value={transcript} onChange={(e) => setTranscript(e.target.value)} autoFocus />
+            <div className="sheet-buttons">
+              <button className="sheet-btn-secondary" onClick={hasSpeech ? startRecord : onClose}>{hasSpeech ? "🎙 Re-record" : "Cancel"}</button>
+              <button className="sheet-btn-primary" onClick={submit} disabled={!transcript.trim()}>Submit</button>
+            </div>
+          </>
+        )}
+        {phase === "submitting" && (
+          <>
+            <div className="sheet-sub">{stage}</div>
+            <div className="sheet-status">
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div className="spinner"></div>
+                <div>Up to 8 minutes. You can leave this screen — your reaction will keep processing.</div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// CAPTURE SHEETS
+const CAPTURE_KINDS = {
+  insight: { icon: "💡", title: "Capture insight", placeholder: "The claim is X, observed in Y context…", api: "captureInsight",
+    payload: (text, src) => ({
+      claim: text, claim_type: "observation", domain_primary: "Cross-cutting",
+      source_doc_ids: src.articleId ? [src.articleId] : [],
+      confidence: "medium",
+      query_context: sourceContextString(src),
+    })
+  },
+  rn: { icon: "📝", title: "Research note", placeholder: "Question: how does X relate to Y? Reasoning: …", api: "captureRn",
+    payload: (text, src) => ({
+      research_question: text.slice(0, 200), reasoning: text,
+      cited_sources: src.articleId ? [src.articleId] : [],
+      assessment: "captured-during-playback",
+      source: "uc3-player",
+      query_context: sourceContextString(src),
+    })
+  },
+  oq: { icon: "❓", title: "Open question", placeholder: "How exactly does X work?", api: "captureOq",
+    payload: (text, src) => ({
+      question: text, domain: "Cross-cutting",
+      parent_article_page_id: src.articleId || undefined,
+      parent_surface: "Commute Player",
+      source_context: sourceContextString(src),
+    })
+  },
+  gap: { icon: "🎓", title: "Learning gap", placeholder: "Teach me about X — specifically the part where…", api: "captureGap",
+    payload: (text, src) => ({
+      gap_title: truncate(text, 100), voice_capture_text: text,
+      trigger_surface: "Commute Player", domain: "Cross-cutting",
+      trigger_source_doc_id: src.articleId || undefined,
+      notes: sourceContextString(src),
+    })
+  },
+};
+
+// Helper: build a human source-context string for capture payloads
+function sourceContextString(src) {
+  const ts = fmtTime(src.timestamp);
+  if (src.kind === "article") {
+    return `Captured during article "${truncate(src.title || src.articleTitle || "(untitled)", 80)}" at ${ts}.`;
+  }
+  if (src.kind === "brief") {
+    return `Captured during review brief for module ${src.moduleId} at ${ts}.`;
+  }
+  if (src.kind === "module" || src.kind === "module-due") {
+    return `Captured during episode for module ${src.moduleId} at ${ts}.`;
+  }
+  // B7: explicit case so the user-facing source line says "today's briefing"
+  // instead of leaking the internal kind string "daily-briefing".
+  if (src.kind === "daily-briefing") {
+    return `Captured during today's briefing at ${ts}.`;
+  }
+  return `Captured during ${src.kind} at ${ts}.`;
+}
+
+function CaptureSheet({ kind, sourceInfo, onClose, onDone, showToast }) {
+  const meta = CAPTURE_KINDS[kind];
+  const [text, setText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const recogRef = useRef(null);
+  const hasSpeech = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  const [recording, setRecording] = useState(false);
+
+  const startRecord = () => {
+    if (!hasSpeech) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const r = new SR();
+    r.continuous = true; r.interimResults = true; r.lang = "en-US";
+    let final = "";
+    r.onresult = (e) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) final += t + " "; else interim += t;
+      }
+      setText((final + interim).trim());
+    };
+    r.onerror = () => setRecording(false);
+    r.onend = () => setRecording(false);
+    recogRef.current = r;
+    try { r.start(); setRecording(true); } catch (_) { setRecording(false); }
+  };
+  const stopRecord = () => { if (recogRef.current) try { recogRef.current.stop(); } catch (_) {} setRecording(false); };
+
+  useEffect(() => {
+    if (hasSpeech) startRecord();
+    return () => { if (recogRef.current) try { recogRef.current.stop(); } catch (_) {} };
+  }, []);
+
+  const submit = async () => {
+    if (!text.trim()) return;
+    setSubmitting(true);
+    try {
+      const payload = meta.payload(text.trim(), sourceInfo);
+      const res = await API[meta.api](payload);
+      let msg = meta.title + " saved";
+      if (res && res.learning_gap_id) {
+        msg = "Learning gap captured · we'll start building your series.";
+        // D4: persist a tracking record so HomeScreen can show the build
+        // progress until the first brief lands.
+        try { trackingAdd(res.learning_gap_id, text.trim().slice(0, 80)); } catch (_) {}
+      }
+      // Item 4C: push a pending entry so the Captures tab shows it
+      // immediately, before the server-side captures-today refetch lands.
+      try { pendingAdd(kind, text.trim()); } catch (_) {}
+      onDone(msg);
+    } catch (e) {
+      if (e.message && e.message.includes("mac_offline")) {
+        onDone("Captured · we'll finish syncing when the local agent is back online.");
+      } else {
+        showToast && showToast(meta.title + " failed: " + e.message);
+        setSubmitting(false);
+      }
+    }
+  };
+
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-handle"></div>
+        <div className="sheet-title">{meta.icon} {meta.title}</div>
+        <div className="sheet-sub">At {fmtTime(sourceInfo.timestamp)} in {sourceInfo.kind === "brief" ? "this brief" : "this episode"}.</div>
+        <textarea className="sheet-input" placeholder={meta.placeholder} value={text} onChange={(e) => setText(e.target.value)} autoFocus />
+        {hasSpeech && (
+          <div style={{ textAlign: "center", marginTop: 8 }}>
+            <button className="play-btn-secondary" onClick={recording ? stopRecord : startRecord}>
+              {recording ? "⏹ Stop recording" : "🎙 Record again"}
+            </button>
+          </div>
+        )}
+        <div className="sheet-buttons">
+          <button className="sheet-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="sheet-btn-primary" onClick={submit} disabled={submitting || !text.trim()}>{submitting ? "Saving…" : "Save"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// PLAYER OVERLAY
+function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRefresh, onOpenSeries, onSwapAudio }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [flagOpen, setFlagOpen] = useState(false);
+  const [reactOpen, setReactOpen] = useState(false);
+  const [captureOpen, setCaptureOpen] = useState(null);
+  const [approving, setApproving] = useState(false);
+  // Post-approve state: "idle" | "approving" | "audio-cooking" | "audio-ready"
+  //                   | "audio-failed" (D1) | "audio-taking-longer" (F14)
+  //                   | "audio-check-failed" | "audio-check-auth"
+  const [postApprove, setPostApprove] = useState("idle");
+  const [postApproveAudioUrl, setPostApproveAudioUrl] = useState(null);
+  const [postApproveError, setPostApproveError] = useState(null);
+  const [retryingAudio, setRetryingAudio] = useState(false);
+
+  const retryAudio = async () => {
+    if (!playing.moduleId) return;
+    setRetryingAudio(true);
+    try {
+      await API.retryModuleTts(playing.moduleId);
+      showToast && showToast("Audio generation restarted…");
+      setPostApproveError(null);
+      setPostApprove("audio-cooking");
+    } catch (e) {
+      showToast && showToast("Retry failed: " + e.message);
+    } finally {
+      setRetryingAudio(false);
+    }
+  };
+
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const onTime = () => setCurrentTime(a.currentTime);
+    const onDur = () => setDuration(a.duration || 0);
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onEnd = () => { setIsPlaying(false); onEnded && onEnded(); };
+    a.addEventListener("timeupdate", onTime);
+    a.addEventListener("durationchange", onDur);
+    a.addEventListener("loadedmetadata", onDur);
+    a.addEventListener("play", onPlay);
+    a.addEventListener("pause", onPause);
+    a.addEventListener("ended", onEnd);
+    setIsPlaying(!a.paused);
+    setCurrentTime(a.currentTime);
+    setDuration(a.duration || 0);
+    return () => {
+      a.removeEventListener("timeupdate", onTime);
+      a.removeEventListener("durationchange", onDur);
+      a.removeEventListener("loadedmetadata", onDur);
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("pause", onPause);
+      a.removeEventListener("ended", onEnd);
+    };
+  }, []);
+
+  const toggle = () => { const a = audioRef.current; if (!a) return; if (a.paused) a.play(); else a.pause(); };
+  const skip = (d) => { const a = audioRef.current; if (!a) return; a.currentTime = Math.max(0, Math.min(a.duration || 0, a.currentTime + d)); };
+  const seekTo = (f) => { const a = audioRef.current; if (!a || !a.duration) return; a.currentTime = f * a.duration; };
+
+  // Keyboard shortcuts (D7): Space toggles play/pause, ←/→ skip 15s,
+  // Escape closes the topmost open surface (sheet first, then overlay).
+  // Ignored when a text input is focused so typing in a capture sheet works.
+  useEffect(() => {
+    const onKey = (e) => {
+      const tgt = e.target;
+      const tag = tgt && tgt.tagName;
+      const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (tgt && tgt.isContentEditable);
+      if (e.key === "Escape") {
+        if (flagOpen) { setFlagOpen(false); e.preventDefault(); return; }
+        if (reactOpen) { setReactOpen(false); e.preventDefault(); return; }
+        if (captureOpen) { setCaptureOpen(null); e.preventDefault(); return; }
+        if (!isTyping) { onClose(); e.preventDefault(); return; }
+      }
+      if (isTyping || flagOpen || reactOpen || captureOpen) return;
+      if (e.key === " " || e.code === "Space") { toggle(); e.preventDefault(); return; }
+      if (e.key === "ArrowLeft")  { skip(-15); e.preventDefault(); return; }
+      if (e.key === "ArrowRight") { skip(15);  e.preventDefault(); return; }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [flagOpen, reactOpen, captureOpen]);
+
+  const handleApprove = async () => {
+    setApproving(true);
+    setPostApprove("approving");
+    try {
+      await API.approve(playing.moduleId);
+      showToast("Approved · audio generating (~2 min)");
+      setPostApprove("audio-cooking");
+      bumpRefresh();
+    } catch (e) {
+      showToast("Approve failed: " + e.message);
+      setPostApprove("idle");
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  // After approve, poll pipeline-status every 20s for this gap. As soon as
+  // audio_r2_key appears on this module, surface a "Listen to full episode"
+  // button in the player. Stops polling after audio is ready or after 6 min.
+  useEffect(() => {
+    if (postApprove !== "audio-cooking" || !playing.gapId || !playing.moduleId) return;
+    let cancelled = false;
+    let tries = 0;
+    let consecutiveFailures = 0;
+    const MAX_TRIES = 18;  // 18 × 20s = 6 min
+    const poll = async () => {
+      tries += 1;
+      try {
+        const r = await API.pipelineStatus(playing.gapId);
+        consecutiveFailures = 0;
+        const me = (r.modules || []).find((m) => m.id === playing.moduleId);
+        if (!cancelled && me && me.audio_r2_key) {
+          setPostApprove("audio-ready");
+          setPostApproveAudioUrl(API.moduleAudioUrl(me.id));
+          return;
+        }
+        // D1: backend-surfaced failure trumps the polling timeout. Wait
+        // until attempts_count >= 2 so we don't flicker into "failed" mid
+        // CF-queue auto-retry (max_retries=2 means up to 3 total attempts).
+        if (!cancelled && me && me.audio_last_error && (me.audio_attempts_count || 0) >= 2 && !me.audio_r2_key) {
+          setPostApproveError(me.audio_last_error);
+          setPostApprove("audio-failed");
+          return;
+        }
+      } catch (e) {
+        if (e && e.code === "AUTH") {
+          if (!cancelled) setPostApprove("audio-check-auth");
+          return;
+        }
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= 3 && !cancelled) {
+          setPostApprove("audio-check-failed");
+          return;
+        }
+      }
+      if (!cancelled && tries < MAX_TRIES) setTimeout(poll, 20_000);
+      else if (!cancelled) setPostApprove("audio-taking-longer");
+    };
+    setTimeout(poll, 20_000);  // first check after 20s
+    return () => { cancelled = true; };
+  }, [postApprove, playing.gapId, playing.moduleId]);
+
+  const progress = duration > 0 ? currentTime / duration : 0;
+  const isBrief = playing.kind === "brief";
+
+  return (
+    <div className="player-overlay">
+      <div className="player-head">
+        <button className="player-head-close" onClick={onClose} aria-label="Minimize player">↓</button>
+        <div className="player-head-title">{isBrief ? "Review brief" : playing.isDue ? "Re-listen · due now" : "Episode"}</div>
+        <div style={{ width: 40 }}></div>
+      </div>
+      <div className="player-body">
+        <div className="player-meta">
+          {playing.position && playing.totalPositions && (
+            <div className="player-kind">Episode {playing.position} of {playing.totalPositions}</div>
+          )}
+          <div className="player-title">{playing.title}</div>
+          {playing.series && <div className="player-series">{playing.series}</div>}
+          {playing.voiceId && <div className="player-voice">Read by {voiceName(playing.voiceId)}</div>}
+        </div>
+
+        <div className="scrubber-wrap">
+          <div className="scrubber" onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            seekTo((e.clientX - rect.left) / rect.width);
+          }}>
+            <div className="scrubber-fill" style={{ width: (progress * 100) + "%" }}></div>
+          </div>
+          <div className="times">
+            <span>{fmtTime(currentTime)}</span>
+            <span>{fmtTime(duration)}</span>
+          </div>
+        </div>
+
+        <div className="transport">
+          <button className="transport-skip" onClick={() => skip(-15)} aria-label="Back 15s">⏮</button>
+          <button className="transport-play" onClick={toggle} aria-label={isPlaying ? "Pause" : "Play"}>{isPlaying ? "⏸" : "▶"}</button>
+          <button className="transport-skip" onClick={() => skip(15)} aria-label="Forward 15s">⏭</button>
+        </div>
+
+        {isBrief && postApprove === "idle" && (
+          <div className="verdict-row">
+            <button className="verdict-approve" onClick={handleApprove} disabled={approving}>
+              ✅ Approve
+            </button>
+            <button className="verdict-react" onClick={() => setReactOpen(true)} aria-label="React with voice">🎙</button>
+          </div>
+        )}
+
+        {/* Post-approve state — replaces the verdict row so user knows what happened next */}
+        {postApprove === "approving" && (
+          <div style={{ padding: "16px", borderRadius: "var(--radius)", background: "var(--bg-sunken)", display: "flex", alignItems: "center", gap: 12 }}>
+            <span className="spinner"></span>
+            <div style={{ fontSize: 14, color: "var(--ink-soft)" }}>Approving…</div>
+          </div>
+        )}
+        {postApprove === "audio-cooking" && (
+          <div style={{ padding: "16px", borderRadius: "var(--radius)", background: "rgba(59,109,17,.07)", border: "0.5px solid var(--green)", color: "var(--green)" }}>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>✅ Approved · audio generating</div>
+            <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+              The full episode audio is being generated by ElevenLabs · usually ready in about 2 minutes.
+              You'll find it on the Series page when it lands, and the play button below will switch over.
+            </div>
+            {playing.gapId && (
+              <div style={{ marginTop: 10 }}>
+                <button className="play-btn-secondary" onClick={() => { onClose(); onOpenSeries && onOpenSeries(playing.gapId); }}>
+                  Open series view →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {postApprove === "audio-ready" && postApproveAudioUrl && (
+          <div style={{ padding: "16px", borderRadius: "var(--radius)", background: "rgba(59,109,17,.07)", border: "0.5px solid var(--green)" }}>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6, color: "var(--green)" }}>🎧 Full episode is ready</div>
+            <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 10 }}>
+              The ~10-minute episode just finished generating. Listen now or save for your drive.
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="play-btn" onClick={() => onSwapAudio && onSwapAudio(postApproveAudioUrl)}>
+                ▶ Listen to full episode
+              </button>
+              {playing.gapId && (
+                <button className="play-btn-secondary" onClick={() => { onClose(); onOpenSeries && onOpenSeries(playing.gapId); }}>
+                  Open series view
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        {postApprove === "audio-taking-longer" && (
+          <div style={{ padding: "16px", borderRadius: "var(--radius)", background: "rgba(133,79,11,.07)", border: "0.5px solid var(--accent-warm)" }}>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6, color: "var(--accent-warm)" }}>⏱ Audio is taking longer than usual</div>
+            <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 10 }}>
+              Generation usually finishes in about 2 minutes but it's been 6. It may still be cooking, or audio generation may have failed. Open the series view to check the latest status, or reload to retry the check.
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {playing.gapId && (
+                <button className="play-btn-secondary" onClick={() => { onClose(); onOpenSeries && onOpenSeries(playing.gapId); }}>
+                  Open series view →
+                </button>
+              )}
+              <button className="play-btn-secondary" onClick={() => window.location.reload()}>
+                Reload
+              </button>
+            </div>
+          </div>
+        )}
+        {postApprove === "audio-check-failed" && (
+          <div style={{ padding: "16px", borderRadius: "var(--radius)", background: "rgba(163,45,45,.07)", border: "0.5px solid var(--red)" }}>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6, color: "var(--red)" }}>⚠ Can't check audio status right now</div>
+            <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 10 }}>
+              Couldn't reach the server to check on audio generation — the network may be flaky. The audio may still be cooking; open the series view to verify directly, or reload to retry.
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {playing.gapId && (
+                <button className="play-btn-secondary" onClick={() => { onClose(); onOpenSeries && onOpenSeries(playing.gapId); }}>
+                  Open series view →
+                </button>
+              )}
+              <button className="play-btn-secondary" onClick={() => window.location.reload()}>
+                Reload
+              </button>
+            </div>
+          </div>
+        )}
+        {postApprove === "audio-check-auth" && (
+          <div style={{ padding: "16px", borderRadius: "var(--radius)", background: "rgba(163,45,45,.07)", border: "0.5px solid var(--red)" }}>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6, color: "var(--red)" }}>🔑 Your session expired</div>
+            <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 10 }}>
+              Sign in again to check on audio generation. The audio may already be ready — the series view will show its current state once you're signed in.
+            </div>
+            <button className="play-btn-secondary" onClick={() => window.location.reload()}>
+              Sign in / reload
+            </button>
+          </div>
+        )}
+        {postApprove === "audio-failed" && (
+          <div style={{ padding: "16px", borderRadius: "var(--radius)", background: "rgba(163,45,45,.07)", border: "0.5px solid var(--red)" }}>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6, color: "var(--red)" }}>⚠ Audio generation failed</div>
+            <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 10 }}>
+              The full episode couldn't be generated. {postApproveError ? <span style={{ fontStyle: "italic" }}>Reason: {postApproveError}.</span> : null} You can retry — the system will try again with a fresh attempt.
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="play-btn" onClick={retryAudio} disabled={retryingAudio}>
+                {retryingAudio ? "Restarting…" : "↻ Retry audio"}
+              </button>
+              {playing.gapId && (
+                <button className="play-btn-secondary" onClick={() => { onClose(); onOpenSeries && onOpenSeries(playing.gapId); }}>
+                  Open series view
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="actions-grid">
+          <button className="action-btn" onClick={() => setCaptureOpen("insight")}>
+            <div className="action-btn-icon">💡</div><div>Insight</div>
+          </button>
+          <button className="action-btn" onClick={() => setCaptureOpen("rn")}>
+            <div className="action-btn-icon">📝</div><div>Note</div>
+          </button>
+          <button className="action-btn" onClick={() => setCaptureOpen("oq")}>
+            <div className="action-btn-icon">❓</div><div>Question</div>
+          </button>
+          <button className="action-btn" onClick={() => setCaptureOpen("gap")}>
+            <div className="action-btn-icon">🎓</div><div>Learn</div>
+          </button>
+          <button className="action-btn" onClick={() => setFlagOpen(true)}>
+            <div className="action-btn-icon">🚩</div><div>Flag</div>
+          </button>
+        </div>
+      </div>
+
+      {flagOpen && <FlagSheet moduleId={playing.moduleId} timestamp={Math.round(currentTime)}
+        showToast={showToast}
+        onClose={() => setFlagOpen(false)}
+        onDone={() => { setFlagOpen(false); showToast("Flag saved"); bumpRefresh(); }} />}
+      {reactOpen && <ReactSheet moduleId={playing.moduleId}
+        showToast={showToast}
+        onClose={() => setReactOpen(false)}
+        onDone={(msg) => { setReactOpen(false); showToast(msg || "Reaction sent"); bumpRefresh(); }} />}
+      {captureOpen && <CaptureSheet kind={captureOpen}
+        showToast={showToast}
+        sourceInfo={{
+          kind: playing.kind,
+          moduleId: playing.moduleId,
+          articleId: playing.articleId,
+          articleTitle: playing.articleTitle,
+          title: playing.title,
+          timestamp: Math.round(currentTime),
+        }}
+        onClose={() => setCaptureOpen(null)}
+        onDone={(msg) => { setCaptureOpen(null); showToast(msg); bumpRefresh(); }} />}
+    </div>
+  );
+}
+
+// SETTINGS
+const THEME_KEY = "spacesc_uc3_theme";
+function applyTheme(theme) {
+  const root = document.documentElement;
+  const t = theme === "system" ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
+  if (t === "dark") {
+    root.style.setProperty("--bg", "#1a1814");
+    root.style.setProperty("--bg-elev", "#252220");
+    root.style.setProperty("--bg-sunken", "#2e2a26");
+    root.style.setProperty("--ink", "#f1efe8");
+    root.style.setProperty("--ink-soft", "#bdb9b0");
+    root.style.setProperty("--ink-mute", "#7a766e");
+    root.style.setProperty("--line", "#3a3631");
+    root.style.setProperty("--line-strong", "#4a4540");
+  } else {
+    // light (default)
+    root.style.removeProperty("--bg");
+    root.style.removeProperty("--bg-elev");
+    root.style.removeProperty("--bg-sunken");
+    root.style.removeProperty("--ink");
+    root.style.removeProperty("--ink-soft");
+    root.style.removeProperty("--ink-mute");
+    root.style.removeProperty("--line");
+    root.style.removeProperty("--line-strong");
+  }
+}
+
+function SettingsScreen({ onClearToken, onTokenUpdated, showToast }) {
+  const [tokenInput, setTokenInput] = useState("");
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem(THEME_KEY) || "system"; } catch (_) { return "system"; } });
+  const tok = API.getToken();
+  const masked = tok ? tok.slice(0, 4) + "•".repeat(Math.max(4, tok.length - 8)) + tok.slice(-4) : "";
+
+  useEffect(() => { applyTheme(theme); try { localStorage.setItem(THEME_KEY, theme); } catch (_) {} }, [theme]);
+
+  const saveToken = () => {
+    if (!tokenInput.trim()) return;
+    API.setToken(tokenInput.trim());
+    setTokenInput("");
+    onTokenUpdated && onTokenUpdated();
+  };
+
+  const clearCache = () => {
+    // Wipe all spacesc_* localStorage keys except the auth token
+    try {
+      const toRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("spacesc_") && k !== TOKEN_KEY) toRemove.push(k);
+      }
+      toRemove.forEach((k) => localStorage.removeItem(k));
+      showToast && showToast(`Cleared ${toRemove.length} cache entries`);
+    } catch (e) {
+      showToast && showToast("Cache clear failed: " + e.message);
+    }
+  };
+
+  return (
+    <div className="page">
+      <div className="section first"><div className="section-title">API token</div></div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Current</div>
+          <div className="settings-val">{masked || "(not set)"}</div>
+          <input className="settings-input" type="password" placeholder="paste new bearer token"
+            value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} />
+          {tokenInput && <button className="settings-action" onClick={saveToken}>Save new token</button>}
+        </div>
+        <div className="settings-row">
+          <button className="settings-action danger" onClick={onClearToken}>Clear token + sign out</button>
+        </div>
+      </div>
+
+      <div className="section"><div className="section-title">Appearance</div></div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Theme</div>
+          <div className="subtabs" style={{ marginTop: 8, marginBottom: 0 }}>
+            <button className={"subtab" + (theme === "light" ? " active" : "")} onClick={() => setTheme("light")}>Light</button>
+            <button className={"subtab" + (theme === "dark" ? " active" : "")} onClick={() => setTheme("dark")}>Dark</button>
+            <button className={"subtab" + (theme === "system" ? " active" : "")} onClick={() => setTheme("system")}>System</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="section"><div className="section-title">Cache</div></div>
+      <div className="card">
+        <div className="settings-row">
+          <button className="settings-action" onClick={clearCache}>Clear local cache (playback positions, registry)</button>
+          <div className="settings-val" style={{ marginTop: 4, color: "var(--ink-mute)", fontSize: 11 }}>Does not log you out.</div>
+        </div>
+      </div>
+
+      <div className="section"><div className="section-title">About</div></div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Version</div>
+          <div className="settings-val">SpaceSC Commute · v5.3</div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-label">Server</div>
+          <div className="settings-val">spacesc-mcp.75xnd2784n.workers.dev</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Apply theme on initial load from localStorage
+try {
+  const savedTheme = localStorage.getItem(THEME_KEY) || "system";
+  applyTheme(savedTheme);
+} catch (_) {}
+
+// APP ROOT
+function App() {
+  const [authed, setAuthed] = useState(() => API.hasToken());
+  const [view, setView] = useState({ name: "home" });
+  const [navStack, setNavStack] = useState([]);
+  const [tab, setTab] = useState("home");
+  const [toast, setToast] = useState(null);
+  const [playing, setPlaying] = useState(null);
+  const [playerOpen, setPlayerOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [preparingAudio, setPreparingAudio] = useState(null); // {msg, sub}
+  const [tracked, setTracked] = useState(() => trackingLoad());
+  // R6.1: expose audio metadata + transport handlers to the OS so iOS lock
+  // screen / Control Center / AirPods double-tap drive the player. Without
+  // this, lock-screen shows generic audio with no title and no skip controls.
+  useEffect(() => {
+    if (!playing || typeof navigator === "undefined" || !navigator.mediaSession) return;
+    const ms = navigator.mediaSession;
+    try {
+      ms.metadata = new MediaMetadata({
+        title: playing.title || "SpaceSC",
+        artist: playing.series || "SpaceSC",
+        album: playing.kind === "article" ? "Articles" : playing.kind === "brief" ? "Review briefs" : "Episodes",
+      });
+    } catch (_) {}
+    const safeRun = (fn) => { try { fn(); } catch (_) {} };
+    ms.setActionHandler && ms.setActionHandler("play", () => safeRun(() => audioRef.current && audioRef.current.play()));
+    ms.setActionHandler && ms.setActionHandler("pause", () => safeRun(() => audioRef.current && audioRef.current.pause()));
+    ms.setActionHandler && ms.setActionHandler("seekbackward", (d) => safeRun(() => {
+      const a = audioRef.current; if (!a) return;
+      a.currentTime = Math.max(0, a.currentTime - ((d && d.seekOffset) || 15));
+    }));
+    ms.setActionHandler && ms.setActionHandler("seekforward", (d) => safeRun(() => {
+      const a = audioRef.current; if (!a) return;
+      a.currentTime = Math.min(a.duration || 0, a.currentTime + ((d && d.seekOffset) || 15));
+    }));
+    ms.setActionHandler && ms.setActionHandler("stop", () => safeRun(stopAudio));
+    return () => {
+      ["play","pause","seekbackward","seekforward","stop"].forEach(k => {
+        try { ms.setActionHandler && ms.setActionHandler(k, null); } catch (_) {}
+      });
+      try { ms.metadata = null; } catch (_) {}
+    };
+  }, [playing && playing.moduleId, playing && playing.articleId, playing && playing.title]);
+
+  // R5.3: surface offline state so the user knows API failures are network,
+  // not bugs. navigator.onLine is conservative — false only when the browser
+  // is confident it has no connection; some flaky tunnels won't trigger.
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator !== "undefined" ? navigator.onLine !== false : true));
+  useEffect(() => {
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
+  const refreshTracked = useCallback(() => setTracked(trackingLoad()), []);
+  const untrackGap = useCallback((gap_id) => setTracked(trackingRemove(gap_id)), []);
+
+  // N3 + R5.1: parse window.location.hash AFTER auth lands. Lets the desk
+  // open /uc3#mod=NN&t=SS and auto-load the module + seek. Format:
+  //   #mod=123&t=45    → play module 123, seek to 45s
+  //   #brief=123       → play brief audio for module 123
+  useEffect(() => {
+    if (!authed) return;
+    const h = (typeof window !== "undefined" && window.location && window.location.hash) || "";
+    if (!h || h.length < 2) return;
+    const params = new URLSearchParams(h.slice(1));
+    const modId = params.get("mod");
+    const briefId = params.get("brief");
+    const tStr = params.get("t");
+    const t = tStr ? parseInt(tStr, 10) : 0;
+    if (briefId && /^\d+$/.test(briefId)) {
+      const id = parseInt(briefId, 10);
+      setTimeout(() => playAudio({
+        kind: "brief", moduleId: id, audioUrl: API.briefAudioUrl(id),
+        title: "Brief " + id, series: "Deep-linked",
+        voiceId: null,
+      }, t || 0), 0);
+    } else if (modId && /^\d+$/.test(modId)) {
+      const id = parseInt(modId, 10);
+      setTimeout(() => playAudio({
+        kind: "module", moduleId: id, audioUrl: API.moduleAudioUrl(id),
+        title: "Module " + id, series: t ? "Deep-linked at " + fmtTime(t) : "Deep-linked",
+        voiceId: null,
+      }, t || 0), 0);
+    }
+  }, [authed]);
+  const audioRef = useRef(null);
+  const blobUrlRef = useRef(null);
+
+  const showToast = useCallback((msg) => {
+    setToast({ id: Date.now(), msg });
+    setTimeout(() => setToast(null), 2400);
+  }, []);
+
+  const navTo = useCallback((next) => {
+    setNavStack((s) => [...s, view]);
+    setView(next);
+  }, [view]);
+
+  const navBack = useCallback(() => {
+    setNavStack((s) => {
+      if (s.length === 0) { setView({ name: tab }); return s; }
+      const prev = s[s.length - 1];
+      setView(prev);
+      return s.slice(0, -1);
+    });
+  }, [tab]);
+
+  const navToTab = useCallback((tabName) => {
+    setTab(tabName);
+    setView({ name: tabName });
+    setNavStack([]);
+  }, []);
+
+  const bumpRefresh = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+    // D4: re-read tracked gaps from localStorage so a new capture surfaces
+    // its banner immediately after the sheet closes.
+    setTracked(trackingLoad());
+  }, []);
+
+  function playAudio(playingState, seekTo) {
+    // Revoke any previous blob URL — prevents leak when switching from
+    // article (blob URL) to module/brief (direct URL) or between articles.
+    if (blobUrlRef.current && blobUrlRef.current !== playingState.audioUrl) {
+      try { URL.revokeObjectURL(blobUrlRef.current); } catch (_) {}
+      blobUrlRef.current = null;
+    }
+    setPlaying(playingState);
+    setPlayerOpen(true);
+    if (seekTo) {
+      setTimeout(() => { if (audioRef.current) audioRef.current.currentTime = seekTo; }, 100);
+    }
+  }
+
+  function stopAudio() {
+    if (audioRef.current) { try { audioRef.current.pause(); } catch (_) {} }
+    if (blobUrlRef.current) { try { URL.revokeObjectURL(blobUrlRef.current); } catch (_) {} blobUrlRef.current = null; }
+    setPlaying(null);
+    setPlayerOpen(false);
+  }
+
+  // Article playback: cache-then-generate, then play blob URL.
+  async function playArticle(a) {
+    const articleVoice = pickVoiceFor(a.page_id);
+    const sourceLabel = a.source_newsletter || a.source_email ||
+      (a.article_url ? new URL(a.article_url).hostname.replace(/^www\./, "") : "Article");
+    setPreparingAudio({ msg: "Preparing article audio…", sub: "Checking cache and generating if needed. ~10-30 seconds first time; instant after." });
+    try {
+      // 1. Try cache first
+      let blob = null;
+      try { blob = await API.getCachedAudioBlob(a.page_id); } catch (_) { blob = null; }
+      // 2. If miss, fetch full article body and generate TTS
+      if (!blob) {
+        setPreparingAudio({ msg: "Fetching article…", sub: "Pulling the full body from Notion." });
+        const article = await API.getArticle(a.page_id);
+        const text = article.full_text || article.blurb || a.title || "";
+        if (!text || text.length < 50) {
+          throw new Error("article body too short to play (got " + text.length + " chars)");
+        }
+        setPreparingAudio({ msg: "Generating audio…", sub: "ElevenLabs TTS · usually 20-30 seconds." });
+        blob = await API.generateAudioBlob(text, articleVoice);
+        // Fire-and-forget cache for next time
+        API.cacheAudioBlob(a.page_id, blob).catch(() => {});
+      }
+      // 3. Create blob URL, free any previous one
+      if (blobUrlRef.current) { try { URL.revokeObjectURL(blobUrlRef.current); } catch (_) {} }
+      const url = URL.createObjectURL(blob);
+      blobUrlRef.current = url;
+      setPreparingAudio(null);
+      playAudio({
+        kind: "article",
+        articleId: a.page_id,
+        moduleId: null,
+        articleTitle: a.title,
+        audioUrl: url,
+        title: truncate(a.title, 80),
+        series: sourceLabel,
+        voiceId: articleVoice,
+      });
+    } catch (e) {
+      setPreparingAudio(null);
+      showToast("Couldn't prepare article: " + e.message);
+    }
+  }
+
+  if (!authed) return <LoginPage onSaved={() => setAuthed(true)} />;
+
+  let viewEl = null;
+  if (view.name === "home") {
+    viewEl = <HomeScreen
+      refreshKey={refreshKey}
+      tracked={tracked}
+      onUntrack={untrackGap}
+      onRetry={bumpRefresh}
+      onPlayDailyBriefing={(briefing) => playAudio({
+        kind: "daily-briefing",
+        moduleId: null,
+        audioUrl: API.briefingAudioUrl(briefing.briefing_date),
+        title: "Today's briefing",
+        series: new Date(briefing.briefing_date + "T00:00:00Z").toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }),
+        voiceId: briefing.voice_id,
+      })}
+      onRegenerateBriefing={async () => {
+        showToast("Regenerating today's briefing…");
+        try {
+          await API._post("/api/uc3/daily-briefing-generate", { async: true });
+          setTimeout(() => bumpRefresh(), 1000);
+        } catch (e) {
+          showToast("Couldn't restart: " + e.message);
+        }
+      }}
+      onOpenSeries={(gapId, gapTitle) => navTo({ name: "series", gapId, gapTitle })}
+      onPlayDue={(item) => playAudio({
+        kind: "module-due", moduleId: item.module_id, audioUrl: API.moduleAudioUrl(item.module_id),
+        title: truncate(item.learning_objective, 80), series: "Due for re-listen",
+        voiceId: null, isDue: true,
+      })}
+      onPlayBrief={(modId, title, series, voiceId, gapId, pos, total) => playAudio({
+        kind: "brief", moduleId: modId, audioUrl: API.briefAudioUrl(modId),
+        title, series, voiceId, gapId, position: pos, totalPositions: total,
+      })}
+      onPlayArticle={playArticle}
+      onPickFromLibrary={() => navToTab("library")}
+    />;
+  } else if (view.name === "library") {
+    viewEl = <LibraryScreen refreshKey={refreshKey}
+      onOpenSeries={(gapId, gapTitle) => navTo({ name: "series", gapId, gapTitle })}
+      onPlayArticle={playArticle}
+      initialSubTab={view.subTab || "articles"} />;
+  } else if (view.name === "captures") {
+    viewEl = <CapturesScreen refreshKey={refreshKey}
+      onJump={(moduleId, ts) => playAudio({
+        kind: "module", moduleId, audioUrl: API.moduleAudioUrl(moduleId),
+        title: "Module " + moduleId, series: "Flagged at " + fmtTime(ts), voiceId: null,
+      }, ts)} />;
+  } else if (view.name === "series") {
+    viewEl = <SeriesScreen gapId={view.gapId} gapTitle={view.gapTitle} refreshKey={refreshKey}
+      onPlayBrief={(modId, title, voiceId, pos, total) => playAudio({
+        kind: "brief", moduleId: modId, audioUrl: API.briefAudioUrl(modId),
+        title, series: view.gapTitle, voiceId, gapId: view.gapId, position: pos, totalPositions: total,
+      })}
+      onPlayModule={(modId, title, voiceId, pos, total) => playAudio({
+        kind: "module", moduleId: modId, audioUrl: API.moduleAudioUrl(modId),
+        title, series: view.gapTitle, voiceId, gapId: view.gapId, position: pos, totalPositions: total,
+      })}
+      showToast={showToast}
+      onRegenerate={async (modId, voiceId) => {
+        // §voice-fix-3: regenerate-in-voice handler. Brief regen is sync
+        // (~30-60s); we fire-and-forget on the UI and rely on the series
+        // polling loop to surface the new audio. For approved modules,
+        // also queue the full-audio regen so the episode aligns to voice.
+        showToast(`Regenerating in ${voiceName(voiceId)}… ~1 min`);
+        // Don't await — let it run in the background. The polling loop in
+        // SeriesScreen catches the result. If the call fails (e.g. quota),
+        // the audio_last_error will surface in the card on next poll.
+        API.regenerateModuleAudio(modId).then(
+          () => { showToast("Brief regenerated"); bumpRefresh(); },
+          (e) => {
+            const msg = (e && e.message) || "regenerate failed";
+            if (/quota_exceeded|quota of \d+/i.test(msg)) {
+              showToast("⚠ TTS quota exhausted — see error in episode card");
+            } else if (/timeout/i.test(msg)) {
+              showToast("Still working — refresh in a minute");
+            } else {
+              showToast("Regenerate failed: " + msg.slice(0, 80));
+            }
+            bumpRefresh();
+          },
+        );
+        // Also queue the full-audio regen (no-op if module isn't approved yet).
+        API.regenerateFullAudio(modId).catch(() => {});
+      }} />;
+  } else if (view.name === "settings") {
+    viewEl = <SettingsScreen
+      onClearToken={() => { API.clearToken(); setAuthed(false); }}
+      onTokenUpdated={() => showToast("Token saved")}
+      showToast={showToast} />;
+  }
+
+  return (
+    <div className="app">
+      {/* R5.3: offline banner — sticky top, shows only when the browser is
+          confident there's no connection. Apple-bar default. */}
+      {!isOnline && (
+        <div role="status" aria-live="polite" style={{ position: "sticky", top: 0, zIndex: 70, padding: "8px 12px", background: "rgba(133,79,11,.95)", color: "#fff", fontSize: 12, fontWeight: 500, textAlign: "center", borderBottom: "0.5px solid var(--accent-warm)" }}>
+          ⚠ You're offline — we'll resume when you're back online.
+        </div>
+      )}
+      {/* Nav menu pill — always visible top-right */}
+      <NavMenu />
+
+      {view.name === "series" ? (
+        <div className="topbar">
+          <button className="topbar-back" onClick={navBack} aria-label="Back">←</button>
+          <div className="topbar-title">{view.gapTitle || "Series"}</div>
+        </div>
+      ) : view.name === "settings" ? (
+        <div className="topbar">
+          <button className="topbar-back" onClick={() => navToTab("home")} aria-label="Close">×</button>
+          <div className="topbar-title">Settings</div>
+        </div>
+      ) : (
+        <div className="topbar">
+          <div className="topbar-title">
+            {view.name === "home" && "Today's drive"}
+            {view.name === "library" && "Library"}
+            {view.name === "captures" && "Captures"}
+          </div>
+          <button className="topbar-gear" onClick={bumpRefresh} aria-label="Refresh">↻</button>
+          <button className="topbar-gear" onClick={() => navTo({ name: "settings" })} aria-label="Settings">⚙</button>
+        </div>
+      )}
+
+      {viewEl}
+
+      {view.name !== "settings" && (
+        <div className="tabbar">
+          <button className={"tab" + (tab === "home" ? " active" : "")} onClick={() => navToTab("home")}>
+            <div className="tab-icon">🏠</div><div>Today</div>
+          </button>
+          <button className={"tab" + (tab === "library" ? " active" : "")} onClick={() => navToTab("library")}>
+            <div className="tab-icon">📚</div><div>Library</div>
+          </button>
+          <button className={"tab" + (tab === "captures" ? " active" : "")} onClick={() => navToTab("captures")}>
+            <div className="tab-icon">💭</div><div>Captures</div>
+          </button>
+        </div>
+      )}
+
+      {playing && !playerOpen && (
+        <MiniPlayer playing={playing} audioRef={audioRef}
+          onExpand={() => setPlayerOpen(true)}
+          onStop={stopAudio} />
+      )}
+
+      {playing && playerOpen && (
+        <PlayerOverlay playing={playing} audioRef={audioRef}
+          onClose={() => setPlayerOpen(false)}
+          onEnded={() => {
+            if (playing.isDue) {
+              API.markListened(playing.moduleId).then(() => showToast("Marked as listened")).catch(() => {});
+            }
+          }}
+          onOpenSeries={(gapId) => navTo({ name: "series", gapId, gapTitle: playing.series })}
+          onSwapAudio={(newUrl) => {
+            // Swap the current player from brief to full episode in place
+            playAudio({
+              ...playing,
+              kind: "module",
+              audioUrl: newUrl,
+              title: playing.title,
+            });
+          }}
+          showToast={showToast} bumpRefresh={bumpRefresh} />
+      )}
+
+      {playing && (
+        <audio
+          ref={audioRef}
+          src={playing.audioUrl}
+          autoPlay
+          onCanPlay={(e) => {
+            // iOS Safari requires a user gesture; explicit play() with catch
+            const p = e.currentTarget.play();
+            if (p && p.catch) p.catch(() => {
+              // Autoplay blocked; show a toast guiding user to tap the player
+              showToast("Tap ▶ in the player to start audio");
+              setPlayerOpen(true);
+            });
+          }}
+          onEnded={() => {
+            if (playing.kind === "article" && playing.articleId) {
+              API.markArticleListened(playing.articleId)
+                .then(() => showToast("Article marked Listened"))
+                .catch(() => {});
+            }
+          }}
+          onError={() => {
+            // Audio failed to load (e.g. flagged-claim jump on a module without full audio)
+            showToast("Audio not ready for this item — try again later.");
+            stopAudio();
+          }}
+        />
+      )}
+
+      {/* Preparing-audio overlay (article TTS generation) */}
+      {preparingAudio && (
+        <div className="prep-overlay">
+          <div className="prep-icon">🎙</div>
+          <div className="prep-msg">{preparingAudio.msg}</div>
+          <div className="prep-sub">{preparingAudio.sub}</div>
+          <div className="spinner"></div>
+          {/* R7.1: escape hatch — background work continues + caches for
+              next time, but the user gets the UI back. */}
+          <button className="play-btn-secondary" onClick={() => setPreparingAudio(null)} style={{ marginTop: 10 }}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {toast && <div className="toast" role="status" aria-live="polite">{toast.msg}</div>}
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>

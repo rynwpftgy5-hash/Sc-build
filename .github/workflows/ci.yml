@@ -1,0 +1,27 @@
+# §8.4a.25c — minimal pre-deploy gate that T1 auto-merge waits on.
+# Runs on every PR; deliberately small so it gates fast (under ~30s typical).
+# Add more checks here as the smoke surface grows.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run -s type-check

@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SpaceSC Insights</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#faf9f5">
+<style>
+/* Palette mirrors /uc3, /desk, /reading */
+:root {
+  --bg: #faf9f5;
+  --bg-elev: #ffffff;
+  --bg-sunken: #f1efe8;
+  --ink: #1f1d18;
+  --ink-soft: #56544c;
+  --ink-mute: #888780;
+  --line: #e7e5dc;
+  --line-strong: #d4d1c4;
+  --accent: #185fa5;
+  --accent-warm: #854f0b;
+  --green: #3b6d11;
+  --red: #a32d2d;
+  --purple: #534ab7;
+  --shadow: 0 1px 3px rgba(0,0,0,0.05);
+  --shadow-rise: 0 4px 12px rgba(0,0,0,0.08);
+  --radius: 10px;
+  --radius-lg: 16px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { background: var(--bg); color: var(--ink); }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.5;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+input, textarea, select { font: inherit; color: inherit; }
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.app { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+.topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 0 12px;
+  border-bottom: 0.5px solid var(--line);
+  margin-bottom: 14px;
+}
+.topbar-back { font-size: 22px; padding: 4px 8px; margin-left: -8px; color: var(--ink-soft); }
+.topbar-title { font-size: 20px; font-weight: 600; flex: 1; line-height: 1.25; min-width: 0; }
+.topbar-sub { font-size: 12px; color: var(--ink-mute); margin-left: 8px; }
+.topbar-gear { font-size: 18px; color: var(--ink-soft); padding: 4px 8px; }
+
+/* Tabs (Pending | Archive) */
+.tabs { display: flex; gap: 2px; background: var(--bg-sunken); border-radius: 999px; padding: 4px; margin-bottom: 14px; }
+.tab { flex: 1; padding: 9px 16px; font-size: 13px; font-weight: 500; border-radius: 999px; color: var(--ink-soft); background: none; border: none; }
+.tab.active { background: var(--bg-elev); color: var(--ink); box-shadow: var(--shadow); }
+.tab-count { display: inline-block; margin-left: 6px; font-size: 11px; color: var(--ink-mute); }
+
+/* Filter chips (domain) */
+.filter-row { display: flex; gap: 6px; padding: 4px 0 12px; overflow-x: auto; flex-wrap: wrap; }
+.filter-chip { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; color: var(--ink-soft); background: var(--bg-sunken); border: 0.5px solid var(--line); white-space: nowrap; }
+.filter-chip.active { background: var(--ink); color: var(--bg-elev); border-color: var(--ink); }
+
+/* Search input */
+.search-input { width: 100%; padding: 10px 14px; border-radius: 999px; border: 0.5px solid var(--line); background: var(--bg-sunken); font-size: 14px; margin-bottom: 14px; color: var(--ink); }
+
+/* Insight card */
+.insight-card {
+  background: var(--bg-elev);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  margin-bottom: 10px;
+  transition: opacity 240ms ease, transform 240ms ease, max-height 280ms ease, margin 280ms ease, padding 280ms ease;
+  max-height: 600px; overflow: hidden;
+}
+.insight-card.removing { opacity: 0; transform: translateX(40px); max-height: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; border-color: transparent; }
+.insight-claim { font-size: 14px; font-weight: 500; line-height: 1.45; color: var(--ink); }
+.insight-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; font-size: 11px; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 10px; background: var(--bg-sunken); color: var(--ink-soft); border: 0.5px solid var(--line); }
+.chip-domain-policy { color: var(--accent); border-color: var(--accent); background: rgba(24,95,165,.07); }
+.chip-domain-economics { color: var(--accent-warm); border-color: var(--accent-warm); background: rgba(133,79,11,.07); }
+.chip-domain-technology { color: var(--purple); border-color: var(--purple); background: rgba(83,74,183,.07); }
+.chip-domain-crosscutting { color: var(--green); border-color: var(--green); background: rgba(59,109,17,.07); }
+.chip-conf-high { color: var(--green); border-color: var(--green); background: rgba(59,109,17,.07); }
+.chip-conf-low { color: var(--accent-warm); border-color: var(--accent-warm); background: rgba(133,79,11,.07); }
+.insight-context { margin-top: 8px; padding: 8px 10px; background: var(--bg-sunken); border-radius: 6px; font-size: 12px; color: var(--ink-soft); line-height: 1.4; }
+.insight-source { margin-top: 6px; font-size: 11px; color: var(--ink-mute); font-family: ui-monospace, monospace; word-break: break-all; }
+.insight-actions { display: flex; gap: 8px; margin-top: 14px; }
+.action-btn {
+  flex: 1; padding: 9px 14px;
+  border-radius: 999px; font-size: 13px; font-weight: 500;
+  border: 0.5px solid var(--line); background: var(--bg-sunken); color: var(--ink);
+}
+.action-btn:hover { border-color: var(--line-strong); }
+.action-btn.confirm-approve { background: var(--green); color: #fff; border-color: var(--green); }
+.action-btn.confirm-reject { background: var(--red); color: #fff; border-color: var(--red); }
+.action-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Empty / loading / error */
+.empty { padding: 40px 20px; text-align: center; color: var(--ink-mute); font-size: 13px; }
+.empty-icon { font-size: 32px; opacity: .5; margin-bottom: 8px; }
+.spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--line); border-top-color: var(--ink-soft); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Mac-offline banner (specific to insights since approval flow depends on il-server) */
+.mac-banner { background: rgba(133,79,11,.07); border: 0.5px solid var(--accent-warm); color: var(--ink-soft); border-radius: var(--radius); padding: 10px 14px; font-size: 12px; margin-bottom: 14px; line-height: 1.5; }
+
+/* Settings */
+.settings-row { padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; }
+.settings-row + .settings-row { border-top: 0.5px solid var(--line); }
+.settings-label { font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.settings-val { font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-soft); }
+.settings-input { width: 100%; padding: 10px 12px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-family: ui-monospace, monospace; font-size: 13px; margin-top: 8px; }
+.settings-action { color: var(--accent); font-size: 14px; padding: 8px 0; background: none; border: none; }
+.settings-action.danger { color: var(--red); }
+.card { background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius-lg); margin-bottom: 10px; }
+
+/* Login */
+.login-page { max-width: 360px; margin: 80px auto; padding: 24px; }
+.login-title { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+.login-sub { font-size: 13px; color: var(--ink-soft); margin-bottom: 18px; }
+.login-input { width: 100%; padding: 12px 14px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-size: 14px; font-family: ui-monospace, monospace; margin-bottom: 10px; }
+.login-btn { width: 100%; padding: 12px; border-radius: 8px; background: var(--ink); color: var(--bg-elev); font-size: 14px; font-weight: 600; border: none; }
+
+/* Toast */
+.toast { position: fixed; bottom: 28px; left: 50%; transform: translate(-50%, 0); background: var(--ink); color: var(--bg-elev); padding: 10px 16px; border-radius: 999px; font-size: 13px; box-shadow: var(--shadow-rise); z-index: 100; }
+
+/* Cross-surface NavMenu (mirrors player/desk/reading) */
+.nav-pill { position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); z-index: 80; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px 7px 10px; background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); font-size: 12px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.nav-pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
+.nav-pill-chev { font-size: 10px; color: var(--ink-mute); transition: transform .2s; }
+.nav-pill.open .nav-pill-chev { transform: rotate(180deg); }
+.nav-backdrop { position: fixed; inset: 0; background: rgba(31,29,24,0.18); z-index: 79; }
+.nav-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 44px)); right: max(10px, env(safe-area-inset-right)); z-index: 80; width: min(280px, calc(100vw - 20px)); background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(31,29,24,0.18); overflow: hidden; }
+.nav-menu-header { padding: 10px 14px 8px; border-bottom: 0.5px solid var(--line); font-size: 10px; font-weight: 700; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; }
+.nav-menu-item { display: flex; align-items: center; gap: 10px; padding: 12px 14px; text-decoration: none; color: var(--ink); border-bottom: 0.5px solid var(--line); }
+.nav-menu-item:last-child { border-bottom: none; }
+.nav-menu-item.active { background: var(--ink); color: var(--bg-elev); }
+.nav-menu-icon { font-size: 18px; flex-shrink: 0; width: 26px; text-align: center; }
+.nav-menu-text { flex: 1; min-width: 0; }
+.nav-menu-name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.nav-menu-desc { font-size: 11px; color: var(--ink-mute); margin-top: 1px; }
+.nav-menu-item.active .nav-menu-desc { color: rgba(250,249,245,0.7); }
+.nav-menu-arrow { color: var(--ink-mute); font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// API LAYER — mirrors /uc3 + /desk + /reading
+const BASE = "https://spacesc-mcp.75xnd2784n.workers.dev";
+const TOKEN_KEY = "spacesc_mcp_token";
+
+const API = {
+  getToken: () => { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (_) { return ""; } },
+  setToken: (t) => { try { localStorage.setItem(TOKEN_KEY, t); } catch (_) {} },
+  clearToken: () => { try { localStorage.removeItem(TOKEN_KEY); } catch (_) {} },
+  hasToken: () => !!API.getToken(),
+
+  async _readBody(r) {
+    try { const t = await r.text(); try { return { json: JSON.parse(t), text: t }; } catch (_) { return { json: null, text: t }; } } catch (_) { return { json: null, text: "" }; }
+  },
+  async _post(path, body, opts) {
+    const t = API.getToken();
+    if (!t) throw Object.assign(new Error("no token"), { code: "NO_TOKEN" });
+    const timeout = (opts && opts.timeout) || 30000;
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const r = await fetch(BASE + path, { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t }, body: JSON.stringify(body || {}), signal: ctrl.signal });
+      clearTimeout(tid);
+      if (r.status === 401 || r.status === 403) throw Object.assign(new Error("unauthorized"), { code: "AUTH" });
+      if (!r.ok) { const b = await API._readBody(r); throw Object.assign(new Error("HTTP " + r.status + ": " + (b.text || "").slice(0, 200)), { code: "HTTP_" + r.status }); }
+      return r.json();
+    } catch (e) {
+      clearTimeout(tid);
+      if (e.name === "AbortError") throw Object.assign(new Error("timeout"), { code: "TIMEOUT" });
+      throw e;
+    }
+  },
+
+  searchInsights: (query, includePending, domain, limit) => API._post("/api/search", {
+    query: query || " ",  // il-server expects non-empty q
+    include_pending: !!includePending,
+    domain: domain || undefined,
+    limit: limit || 25,
+  }),
+  approve: (insightId, action) => API._post("/api/approve", { insight_id: insightId, action }),
+};
+
+// HELPERS
+const DOMAIN_OPTIONS = ["Policy", "Economics", "Technology", "Cross-cutting"];
+const DOMAIN_CHIP_CLASS = {
+  "Policy": "chip chip-domain-policy",
+  "Economics": "chip chip-domain-economics",
+  "Technology": "chip chip-domain-technology",
+  "Cross-cutting": "chip chip-domain-crosscutting",
+};
+const CONF_CHIP_CLASS = {
+  "high": "chip chip-conf-high",
+  "medium": "chip",
+  "low": "chip chip-conf-low",
+};
+
+const truncate = (s, n) => {
+  if (!s) return "";
+  if (s.length <= n) return s;
+  return s.slice(0, n).replace(/[,;:.\s]+\S*$/, "") + "…";
+};
+
+// SpaceSC cross-surface tools — Insights is active here
+const SPACESC_TOOLS = [
+  { id: "commute",  name: "Commute",   desc: "Audio · listen + learn",          icon: "🎧", href: "/uc3" },
+  { id: "desk",     name: "Desk",      desc: "Today · inbox · captures",        icon: "🗂",  href: "/desk" },
+  { id: "reading",  name: "Reading",   desc: "Deep read + annotation",          icon: "📖", href: "/reading" },
+  { id: "corpus",   name: "Corpus",    desc: "Search the knowledge base",       icon: "🔍", href: "/corpus" },
+  { id: "insights", name: "Insights",  desc: "Approve or reject claims",        icon: "💎", href: "/insights", active: true },
+  { id: "posture",  name: "Posture",   desc: "Three-domain balance",            icon: "📊", href: "/posture" },
+  { id: "pipeline", name: "Pipeline",  desc: "Ingestion health + errors",       icon: "🩺", href: "/pipeline" },
+  { id: "log",      name: "Build Log", desc: "What shipped, what's next",       icon: "📒", href: "/log" },
+  { id: "feedback", name: "Reports",   desc: "Your 🚩 captures + diagnoses",    icon: "🚩", href: "/feedback" },
+  { id: "map",      name: "System map", desc: "Five use cases · build tree",    icon: "🗺",  href: "/system-map" },
+];
+
+// THEME
+const THEME_KEY = "spacesc_theme";
+function applyTheme(mode) {
+  const dark = mode === "dark" || (mode === "system" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const root = document.documentElement;
+  if (dark) {
+    root.style.setProperty("--bg", "#1f1d18");
+    root.style.setProperty("--bg-elev", "#2a2823");
+    root.style.setProperty("--bg-sunken", "#3a3833");
+    root.style.setProperty("--ink", "#faf9f5");
+    root.style.setProperty("--ink-soft", "#c4c2bb");
+    root.style.setProperty("--line", "#4a4843");
+    root.style.setProperty("--line-strong", "#5a5853");
+  } else {
+    root.style.removeProperty("--bg");
+    root.style.removeProperty("--bg-elev");
+    root.style.removeProperty("--bg-sunken");
+    root.style.removeProperty("--ink");
+    root.style.removeProperty("--ink-soft");
+    root.style.removeProperty("--line");
+    root.style.removeProperty("--line-strong");
+  }
+}
+try { applyTheme(localStorage.getItem(THEME_KEY) || "system"); } catch (_) {}
+
+// NavMenu
+function NavMenu() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className={"nav-pill" + (open ? " open" : "")} onClick={() => setOpen(!open)} aria-label="Open SpaceSC navigation">
+        <span className="nav-pill-dot"></span>
+        <span>SpaceSC</span>
+        <span className="nav-pill-chev">▼</span>
+      </button>
+      {open && (
+        <>
+          <div className="nav-backdrop" onClick={() => setOpen(false)}></div>
+          <div className="nav-menu" role="dialog" aria-label="SpaceSC tools">
+            <div className="nav-menu-header">Jump to</div>
+            {SPACESC_TOOLS.map((tool) => (
+              <a key={tool.id}
+                className={"nav-menu-item" + (tool.active ? " active" : "")}
+                href={tool.href}
+                onClick={(e) => { if (tool.active) e.preventDefault(); setOpen(false); }}>
+                <span className="nav-menu-icon">{tool.icon}</span>
+                <span className="nav-menu-text">
+                  <div className="nav-menu-name">{tool.name}</div>
+                  <div className="nav-menu-desc">{tool.desc}</div>
+                </span>
+                {tool.active ? null : <span className="nav-menu-arrow">→</span>}
+              </a>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+// LoginPage
+function LoginPage({ onSaved }) {
+  const [val, setVal] = useState("");
+  const [err, setErr] = useState(null);
+  const [verifying, setVerifying] = useState(false);
+
+  const tryToken = async () => {
+    if (!val.trim()) return;
+    setVerifying(true); setErr(null);
+    API.setToken(val.trim());
+    try {
+      // Cheap auth probe via a 1-item search
+      await API.searchInsights(" ", true, null, 1);
+      onSaved();
+    } catch (e) {
+      if (e.code === "AUTH" || (e.message && e.message.includes("401"))) {
+        API.clearToken();
+        setErr("Token rejected. Paste the right one.");
+      } else {
+        // Reviewer NB#2 fix: hold on the login page instead of dumping
+        // user into a broken app state. Token IS saved (in case server
+        // comes back), but the user has to explicitly retry.
+        setErr("Saved, but couldn't reach the server (" + (e.message || "unknown") + "). Tap Save to retry.");
+      }
+      setVerifying(false);
+    }
+  };
+
+  return (
+    <div className="app">
+      <div className="login-page">
+        <div className="login-title">SpaceSC Insights</div>
+        <div className="login-sub">Paste your bearer token to begin. Same token across all SpaceSC surfaces.</div>
+        <input className="login-input" type="password" placeholder="bearer token" value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") tryToken(); }} autoFocus />
+        {err && <div style={{ color: "var(--red)", fontSize: 13, marginTop: 10 }}>{err}</div>}
+        <button className="login-btn" onClick={tryToken} disabled={verifying}>
+          {verifying ? "Verifying…" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// INSIGHT CARD
+function InsightCard({ insight, onApprove, onReject, busy, removing }) {
+  // Two-click confirm pattern per §8.4a.9. First click arms a pending action;
+  // second click on the SAME button executes. Clicking the OPPOSITE cancels
+  // the existing arm (does not arm the opposite — that would defeat the
+  // guard for a distracted user). Auto-reset after 5s of inactivity.
+  const [pendingAction, setPendingAction] = useState(null); // "approve" | "reject" | null
+
+  // Reviewer-blocker fix: auto-reset arm after 5s so a distracted user who
+  // armed and walked away doesn't fire on next single tap.
+  useEffect(() => {
+    if (!pendingAction) return;
+    const t = setTimeout(() => setPendingAction(null), 5000);
+    return () => clearTimeout(t);
+  }, [pendingAction]);
+
+  const handleApprove = () => {
+    if (pendingAction === "approve") {
+      onApprove(insight.id);
+      setPendingAction(null);
+    } else if (pendingAction === "reject") {
+      // Reviewer-blocker fix: opposite click CANCELS the existing arm
+      // (was incorrectly re-arming the opposite, allowing a single tap to
+      // fire after a sequence like: arm-A → arm-R → tap-R fires Reject).
+      setPendingAction(null);
+    } else {
+      setPendingAction("approve");
+    }
+  };
+  const handleReject = () => {
+    if (pendingAction === "reject") {
+      onReject(insight.id);
+      setPendingAction(null);
+    } else if (pendingAction === "approve") {
+      // Reviewer-blocker fix: opposite click CANCELS.
+      setPendingAction(null);
+    } else {
+      setPendingAction("reject");
+    }
+  };
+
+  const domainCls = DOMAIN_CHIP_CLASS[insight.domain_primary] || "chip";
+  const confCls = CONF_CHIP_CLASS[(insight.confidence || "medium").toLowerCase()] || "chip";
+
+  return (
+    <div className={"insight-card" + (removing ? " removing" : "")}>
+      <div className="insight-claim">{insight.claim_text || insight.claim || "(empty claim)"}</div>
+      <div className="insight-meta">
+        {insight.claim_type && <span className="chip">{insight.claim_type}</span>}
+        {insight.domain_primary && <span className={domainCls}>{insight.domain_primary}</span>}
+        {insight.domain_secondary && <span className="chip">{insight.domain_secondary}</span>}
+        {insight.confidence && <span className={confCls}>conf: {insight.confidence}</span>}
+        {insight.status && insight.status !== "pending" && <span className="chip">{insight.status}</span>}
+      </div>
+      {insight.query_context && (
+        <div className="insight-context">{truncate(insight.query_context, 240)}</div>
+      )}
+      {Array.isArray(insight.source_doc_ids) && insight.source_doc_ids.length > 0 && (
+        <div className="insight-source">sources: {insight.source_doc_ids.slice(0, 3).join(", ")}{insight.source_doc_ids.length > 3 ? ` +${insight.source_doc_ids.length - 3} more` : ""}</div>
+      )}
+      <div className="insight-actions">
+        <button
+          className={"action-btn" + (pendingAction === "reject" ? " confirm-reject" : "")}
+          onClick={handleReject}
+          disabled={busy}
+          aria-label={pendingAction === "reject" ? "Confirm reject" : "Reject"}>
+          {pendingAction === "reject" ? "✗ Confirm reject" : "Reject"}
+        </button>
+        <button
+          className={"action-btn" + (pendingAction === "approve" ? " confirm-approve" : "")}
+          onClick={handleApprove}
+          disabled={busy}
+          aria-label={pendingAction === "approve" ? "Confirm approve" : "Approve"}>
+          {pendingAction === "approve" ? "✓ Confirm approve" : "Approve"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// MAIN LIST VIEW
+function ListView({ tab, refreshKey, onRetry, showToast, onAuthLost }) {
+  const [query, setQuery] = useState("");
+  const [domain, setDomain] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [items, setItems] = useState([]);
+  const [busyIds, setBusyIds] = useState(new Set());
+  const [removingIds, setRemovingIds] = useState(new Set());
+  const [macOffline, setMacOffline] = useState(false);
+
+  // Debounce search query
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query.trim()), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setError(null); setMacOffline(false);
+    const includePending = tab === "pending";
+    const q = debouncedQuery || " ";
+    API.searchInsights(q, includePending, domain, 50)
+      .then((r) => {
+        if (cancelled) return;
+        // Worker MAC_OFFLINE_RESULT shape: { ok: false, status: 503, error: "mac_offline" }
+        if (r && r.ok === false && (r.error === "mac_offline" || (r.error && r.error.includes("mac_offline")))) {
+          setMacOffline(true);
+          setItems([]);
+          setLoading(false);
+          return;
+        }
+        // il-server /search returns { ok, results: [...] } or similar.
+        // Handle multiple plausible shapes defensively.
+        const all = r.results || r.insights || r.items || [];
+        // Reviewer-blocker fix: tolerant filters. Pending tab keeps the
+        // "default to pending if status missing" rule. Archive tab trusts
+        // the server's include_pending=false filter and only excludes rows
+        // explicitly marked status="pending" — so rows with stripped /
+        // renamed status fields still surface instead of vanishing silently.
+        const filtered = tab === "pending"
+          ? all.filter((i) => (i.status || "pending") === "pending")
+          : all.filter((i) => (i.status || "approved") !== "pending");
+        setItems(filtered);
+        setLoading(false);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        // Reviewer NB#3 fix: AUTH error → back to LoginPage instead of a
+        // dead-end Retry button that can't fix an expired token.
+        if (e.code === "AUTH") {
+          onAuthLost && onAuthLost();
+          return;
+        }
+        if (e.message && e.message.includes("mac_offline")) {
+          setMacOffline(true);
+          setItems([]);
+        } else {
+          setError(e.message);
+        }
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [tab, debouncedQuery, domain, refreshKey]);
+
+  const handleAction = async (insightId, action) => {
+    const next = new Set(busyIds); next.add(insightId); setBusyIds(next);
+    try {
+      await API.approve(insightId, action);
+    } catch (e) {
+      const msg = e.message || "action failed";
+      // Reviewer NB#3 fix: also handle AUTH on the action path.
+      if (e.code === "AUTH") {
+        onAuthLost && onAuthLost();
+        return;
+      }
+      if (msg.includes("mac_offline")) {
+        showToast && showToast("Mac is offline — can't approve/reject right now.");
+        setMacOffline(true);
+      } else {
+        showToast && showToast(action + " failed: " + msg);
+      }
+      setBusyIds((cur) => { const n = new Set(cur); n.delete(insightId); return n; });
+      return;
+    }
+    try {
+      // Slide-out animation, then remove from list
+      const rem = new Set(removingIds); rem.add(insightId); setRemovingIds(rem);
+      setTimeout(() => {
+        setItems((cur) => cur.filter((i) => i.id !== insightId));
+        setRemovingIds((cur) => { const n = new Set(cur); n.delete(insightId); return n; });
+        setBusyIds((cur) => { const n = new Set(cur); n.delete(insightId); return n; });
+      }, 260);
+      showToast && showToast(action === "approve" ? "✓ Approved" : "✗ Rejected");
+    } catch (_) {
+      // Animation kickoff guarded above; this catch is structural.
+      setBusyIds((cur) => { const n = new Set(cur); n.delete(insightId); return n; });
+    }
+  };
+
+  return (
+    <div>
+      {macOffline && (
+        <div className="mac-banner">
+          ⚠ The Insight Ledger lives on the Mac and the Mac is offline right now. Approve/reject actions and live insight reads won't work until it's reachable again.
+        </div>
+      )}
+
+      <input
+        type="search"
+        className="search-input"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={tab === "pending" ? "Search pending insights…" : "Search archive (approved insights)…"}
+        aria-label="Search insights"
+      />
+
+      <div className="filter-row" role="tablist" aria-label="Domain filter">
+        <button className={"filter-chip" + (domain === null ? " active" : "")} onClick={() => setDomain(null)}>All domains</button>
+        {DOMAIN_OPTIONS.map((d) => (
+          <button key={d} className={"filter-chip" + (domain === d ? " active" : "")} onClick={() => setDomain(d)}>{d}</button>
+        ))}
+      </div>
+
+      {loading ? <div className="empty"><div className="spinner"></div></div>
+       : error ? (
+         <div className="empty">
+           <div className="empty-icon">⚠</div>
+           Couldn't load: {error}
+           <div style={{ marginTop: 12 }}>
+             <button className="action-btn" onClick={onRetry}>↻ Retry</button>
+           </div>
+         </div>
+       )
+       : items.length === 0 ? (
+         <div className="empty">
+           <div className="empty-icon">{tab === "pending" ? "💭" : "📥"}</div>
+           {macOffline
+             ? "Nothing to show — Mac is offline."
+             : tab === "pending"
+               ? (debouncedQuery ? `No pending insights match "${debouncedQuery}".` : "No pending insights. Capture some via /uc3 or /reading.")
+               : (debouncedQuery ? `No approved insights match "${debouncedQuery}".` : "No approved insights yet.")}
+         </div>
+       ) : (
+         items.map((i) => (
+           <InsightCard
+             key={i.id} insight={i}
+             onApprove={(id) => handleAction(id, "approve")}
+             onReject={(id) => handleAction(id, "reject")}
+             busy={busyIds.has(i.id)}
+             removing={removingIds.has(i.id)}
+           />
+         ))
+       )}
+    </div>
+  );
+}
+
+// SETTINGS
+function SettingsView({ onClearToken, showToast }) {
+  const [tokenInput, setTokenInput] = useState("");
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem(THEME_KEY) || "system"; } catch (_) { return "system"; } });
+  const masked = (() => { const t = API.getToken(); return t ? t.slice(0, 6) + "…" + t.slice(-4) : ""; })();
+
+  useEffect(() => { applyTheme(theme); try { localStorage.setItem(THEME_KEY, theme); } catch (_) {} }, [theme]);
+
+  const saveToken = () => {
+    if (!tokenInput.trim()) return;
+    API.setToken(tokenInput.trim());
+    setTokenInput("");
+    showToast && showToast("Token saved");
+  };
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.05, color: "var(--ink-soft)", margin: "8px 0 10px" }}>API token</div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Current</div>
+          <div className="settings-val">{masked || "(not set)"}</div>
+          <input className="settings-input" type="password" placeholder="paste new bearer token" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} />
+          {tokenInput && <button className="settings-action" onClick={saveToken}>Save new token</button>}
+        </div>
+        <div className="settings-row">
+          <button className="settings-action danger" onClick={onClearToken}>Clear token + sign out</button>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.05, color: "var(--ink-soft)", margin: "22px 0 10px" }}>Appearance</div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Theme</div>
+          <div className="filter-row" style={{ marginTop: 8, paddingBottom: 0 }}>
+            {["light", "dark", "system"].map((m) => (
+              <button key={m} className={"filter-chip" + (theme === m ? " active" : "")} onClick={() => setTheme(m)}>{m}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.05, color: "var(--ink-soft)", margin: "22px 0 10px" }}>About</div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Version</div>
+          <div className="settings-val">SpaceSC Insights · Phase 1 (curation queue + archive)</div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-label">Server</div>
+          <div className="settings-val">spacesc-mcp.75xnd2784n.workers.dev</div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-label">Legacy v3 surface</div>
+          <div className="settings-val">
+            <a href="/insights-v3-legacy" style={{ color: "var(--accent)", textDecoration: "none" }}>Open the v3 insights surface ↗</a>
+            <div style={{ fontSize: 11, color: "var(--ink-mute)", marginTop: 4 }}>Fallback if you need the original. Will be retired after a soak.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// APP ROOT
+function App() {
+  const [authed, setAuthed] = useState(() => API.hasToken());
+  const [tab, setTab] = useState("pending"); // pending | archive | settings
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [toast, setToast] = useState(null);
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator !== "undefined" ? navigator.onLine !== false : true));
+
+  useEffect(() => {
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
+
+  const showToast = useCallback((msg) => {
+    setToast({ id: Date.now(), msg });
+    setTimeout(() => setToast(null), 2400);
+  }, []);
+
+  const bumpRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  if (!authed) return <LoginPage onSaved={() => setAuthed(true)} />;
+
+  const isSettings = tab === "settings";
+
+  return (
+    <>
+      <NavMenu />
+      {!isOnline && (
+        <div role="status" aria-live="polite" style={{ position: "sticky", top: 0, zIndex: 70, padding: "8px 12px", background: "rgba(133,79,11,.95)", color: "#fff", fontSize: 12, fontWeight: 500, textAlign: "center" }}>
+          ⚠ You're offline — actions will retry when you're back.
+        </div>
+      )}
+      <div className="app">
+        {isSettings ? (
+          <div className="topbar">
+            <button className="topbar-back" onClick={() => setTab("pending")} aria-label="Close settings">×</button>
+            <div className="topbar-title">Settings</div>
+          </div>
+        ) : (
+          <div className="topbar">
+            <div className="topbar-title">Insights</div>
+            <div className="topbar-sub">curate · approve · archive</div>
+            <button className="topbar-gear" onClick={bumpRefresh} aria-label="Refresh">↻</button>
+            <button className="topbar-gear" onClick={() => setTab("settings")} aria-label="Settings">⚙</button>
+          </div>
+        )}
+
+        {!isSettings && (
+          <>
+            <div className="tabs" role="tablist" aria-label="Insights view">
+              <button className={"tab" + (tab === "pending" ? " active" : "")} onClick={() => setTab("pending")} role="tab" aria-selected={tab === "pending"}>
+                💭 Pending
+              </button>
+              <button className={"tab" + (tab === "archive" ? " active" : "")} onClick={() => setTab("archive")} role="tab" aria-selected={tab === "archive"}>
+                📥 Archive
+              </button>
+            </div>
+            <ListView tab={tab} refreshKey={refreshKey} onRetry={bumpRefresh} showToast={showToast} onAuthLost={() => { API.clearToken(); setAuthed(false); }} />
+          </>
+        )}
+        {isSettings && (
+          <SettingsView onClearToken={() => { API.clearToken(); setAuthed(false); }} showToast={showToast} />
+        )}
+      </div>
+      {toast && <div className="toast" role="status" aria-live="polite">{toast.msg}</div>}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

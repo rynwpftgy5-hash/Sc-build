@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SpaceSC Corpus</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#faf9f5">
+<style>
+:root {
+  --bg: #faf9f5;
+  --bg-elev: #ffffff;
+  --bg-sunken: #f1efe8;
+  --ink: #1f1d18;
+  --ink-soft: #56544c;
+  --ink-mute: #888780;
+  --line: #e7e5dc;
+  --line-strong: #d4d1c4;
+  --accent: #185fa5;
+  --accent-warm: #854f0b;
+  --green: #3b6d11;
+  --red: #a32d2d;
+  --purple: #534ab7;
+  --shadow: 0 1px 3px rgba(0,0,0,0.05);
+  --shadow-rise: 0 4px 12px rgba(0,0,0,0.08);
+  --radius: 10px;
+  --radius-lg: 16px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { background: var(--bg); color: var(--ink); }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.5;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+input, textarea, select { font: inherit; color: inherit; }
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.app { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+.topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 0 12px;
+  border-bottom: 0.5px solid var(--line);
+  margin-bottom: 14px;
+}
+.topbar-back { font-size: 22px; padding: 4px 8px; margin-left: -8px; color: var(--ink-soft); }
+.topbar-title { font-size: 20px; font-weight: 600; flex: 1; line-height: 1.25; min-width: 0; }
+.topbar-sub { font-size: 12px; color: var(--ink-mute); margin-left: 8px; }
+.topbar-gear { font-size: 18px; color: var(--ink-soft); padding: 4px 8px; }
+
+/* Query box (the centerpiece) */
+.query-box {
+  background: var(--bg-elev); border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg); padding: 16px; margin-bottom: 14px;
+}
+.query-input {
+  width: 100%; min-height: 56px; padding: 12px 14px;
+  border-radius: 10px; border: 0.5px solid var(--line);
+  background: var(--bg-sunken); font-size: 15px; line-height: 1.5; resize: vertical;
+  color: var(--ink);
+}
+.query-input:focus { background: var(--bg-elev); }
+.query-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.query-hint { flex: 1; font-size: 11px; color: var(--ink-mute); }
+.query-btn {
+  padding: 9px 18px; border-radius: 999px;
+  background: var(--ink); color: var(--bg-elev);
+  font-size: 13px; font-weight: 600; border: none;
+}
+.query-btn:disabled { background: var(--line-strong); color: var(--ink-mute); cursor: not-allowed; }
+.query-limit { padding: 6px 10px; border-radius: 999px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-size: 12px; color: var(--ink-soft); }
+
+/* Recent queries (history) */
+.recent-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.recent-chip {
+  padding: 5px 10px; border-radius: 999px;
+  background: var(--bg-sunken); border: 0.5px solid var(--line);
+  color: var(--ink-soft); font-size: 12px; cursor: pointer;
+  max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.recent-chip:hover { border-color: var(--line-strong); color: var(--ink); }
+.recent-label { font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; padding: 5px 0; margin-right: 4px; }
+.recent-clear { font-size: 11px; color: var(--ink-mute); padding: 5px 8px; }
+.recent-clear:hover { color: var(--red); }
+
+/* Result header */
+.result-header { display: flex; align-items: baseline; gap: 10px; margin: 10px 0 8px; }
+.result-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); }
+.result-meta { font-size: 12px; color: var(--ink-mute); margin-left: auto; }
+
+/* Chunk card */
+.chunk-card {
+  background: var(--bg-elev); border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg); padding: 14px 16px; margin-bottom: 10px;
+}
+.chunk-head { display: flex; align-items: flex-start; gap: 10px; }
+.chunk-rank {
+  flex-shrink: 0; font-size: 12px; font-weight: 600;
+  color: var(--ink-soft); background: var(--bg-sunken);
+  padding: 4px 8px; border-radius: 6px; min-width: 28px; text-align: center;
+}
+.chunk-title { flex: 1; font-size: 14px; font-weight: 500; line-height: 1.35; min-width: 0; }
+.chunk-score { font-size: 11px; color: var(--ink-mute); font-family: ui-monospace, monospace; }
+.chunk-body { margin-top: 8px; font-size: 13px; line-height: 1.55; color: var(--ink); white-space: pre-wrap; word-wrap: break-word; }
+.chunk-source { margin-top: 8px; font-size: 11px; color: var(--ink-mute); font-family: ui-monospace, monospace; word-break: break-all; }
+.chunk-actions { display: flex; gap: 8px; margin-top: 12px; }
+.chunk-btn {
+  padding: 7px 12px; border-radius: 999px;
+  background: var(--bg-sunken); color: var(--ink); border: 0.5px solid var(--line);
+  font-size: 12px; font-weight: 500;
+}
+.chunk-btn:hover { border-color: var(--line-strong); }
+.chunk-btn-primary { background: var(--ink); color: var(--bg-elev); border-color: var(--ink); }
+
+/* Empty / loading */
+.empty { padding: 40px 20px; text-align: center; color: var(--ink-mute); font-size: 13px; }
+.empty-icon { font-size: 32px; opacity: .5; margin-bottom: 8px; }
+.spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--line); border-top-color: var(--ink-soft); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Capture modal (sub-sheet pattern) */
+.cap-backdrop { position: fixed; inset: 0; background: rgba(31,29,24,0.48); z-index: 100; display: flex; align-items: flex-end; justify-content: center; }
+@media (min-width: 600px) { .cap-backdrop { align-items: center; } }
+.cap-sheet {
+  background: var(--bg-elev); border-radius: 18px 18px 0 0; padding: 20px;
+  width: 100%; max-width: 560px;
+  box-shadow: 0 -10px 40px rgba(31,29,24,0.2);
+}
+@media (min-width: 600px) { .cap-sheet { border-radius: 18px; } }
+.cap-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.cap-sub { font-size: 12px; color: var(--ink-mute); margin-bottom: 12px; }
+.cap-input { width: 100%; min-height: 100px; padding: 10px 12px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-size: 14px; line-height: 1.5; color: var(--ink); resize: vertical; }
+.cap-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.cap-field-label { font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.cap-select { width: 100%; padding: 8px 10px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-size: 13px; color: var(--ink); }
+.cap-source-line { margin-top: 10px; font-size: 11px; color: var(--ink-mute); font-family: ui-monospace, monospace; }
+.cap-buttons { display: flex; gap: 8px; margin-top: 14px; }
+.cap-btn-sec { flex: 1; padding: 10px; border-radius: 999px; background: var(--bg-sunken); color: var(--ink); border: 0.5px solid var(--line); font-size: 13px; }
+.cap-btn-pri { flex: 1; padding: 10px; border-radius: 999px; background: var(--ink); color: var(--bg-elev); border: none; font-size: 13px; font-weight: 600; }
+.cap-btn-pri:disabled { background: var(--line-strong); color: var(--ink-mute); cursor: not-allowed; }
+
+/* mac_offline banner (capture path depends on il-server) */
+.mac-banner { background: rgba(133,79,11,.07); border: 0.5px solid var(--accent-warm); color: var(--ink-soft); border-radius: var(--radius); padding: 10px 14px; font-size: 12px; margin-bottom: 14px; line-height: 1.5; }
+
+/* Settings */
+.settings-row { padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; }
+.settings-row + .settings-row { border-top: 0.5px solid var(--line); }
+.settings-label { font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.settings-val { font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-soft); }
+.settings-input { width: 100%; padding: 10px 12px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-family: ui-monospace, monospace; font-size: 13px; margin-top: 8px; }
+.settings-action { color: var(--accent); font-size: 14px; padding: 8px 0; background: none; border: none; }
+.settings-action.danger { color: var(--red); }
+.filter-row { display: flex; gap: 6px; padding: 4px 0 12px; flex-wrap: wrap; }
+.filter-chip { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; color: var(--ink-soft); background: var(--bg-sunken); border: 0.5px solid var(--line); white-space: nowrap; }
+.filter-chip.active { background: var(--ink); color: var(--bg-elev); border-color: var(--ink); }
+.card { background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius-lg); margin-bottom: 10px; }
+
+/* Login */
+.login-page { max-width: 360px; margin: 80px auto; padding: 24px; }
+.login-title { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+.login-sub { font-size: 13px; color: var(--ink-soft); margin-bottom: 18px; }
+.login-input { width: 100%; padding: 12px 14px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-size: 14px; font-family: ui-monospace, monospace; margin-bottom: 10px; }
+.login-btn { width: 100%; padding: 12px; border-radius: 8px; background: var(--ink); color: var(--bg-elev); font-size: 14px; font-weight: 600; border: none; }
+
+/* Toast */
+.toast { position: fixed; bottom: 28px; left: 50%; transform: translate(-50%, 0); background: var(--ink); color: var(--bg-elev); padding: 10px 16px; border-radius: 999px; font-size: 13px; box-shadow: var(--shadow-rise); z-index: 110; }
+
+/* NavMenu */
+.nav-pill { position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); z-index: 80; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px 7px 10px; background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); font-size: 12px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.nav-pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
+.nav-pill-chev { font-size: 10px; color: var(--ink-mute); transition: transform .2s; }
+.nav-pill.open .nav-pill-chev { transform: rotate(180deg); }
+.nav-backdrop { position: fixed; inset: 0; background: rgba(31,29,24,0.18); z-index: 79; }
+.nav-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 44px)); right: max(10px, env(safe-area-inset-right)); z-index: 80; width: min(280px, calc(100vw - 20px)); background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(31,29,24,0.18); overflow: hidden; }
+.nav-menu-header { padding: 10px 14px 8px; border-bottom: 0.5px solid var(--line); font-size: 10px; font-weight: 700; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; }
+.nav-menu-item { display: flex; align-items: center; gap: 10px; padding: 12px 14px; text-decoration: none; color: var(--ink); border-bottom: 0.5px solid var(--line); }
+.nav-menu-item:last-child { border-bottom: none; }
+.nav-menu-item.active { background: var(--ink); color: var(--bg-elev); }
+.nav-menu-icon { font-size: 18px; flex-shrink: 0; width: 26px; text-align: center; }
+.nav-menu-text { flex: 1; min-width: 0; }
+.nav-menu-name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.nav-menu-desc { font-size: 11px; color: var(--ink-mute); margin-top: 1px; }
+.nav-menu-item.active .nav-menu-desc { color: rgba(250,249,245,0.7); }
+.nav-menu-arrow { color: var(--ink-mute); font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// API LAYER
+const BASE = "https://spacesc-mcp.75xnd2784n.workers.dev";
+const TOKEN_KEY = "spacesc_mcp_token";
+
+const API = {
+  getToken: () => { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (_) { return ""; } },
+  setToken: (t) => { try { localStorage.setItem(TOKEN_KEY, t); } catch (_) {} },
+  clearToken: () => { try { localStorage.removeItem(TOKEN_KEY); } catch (_) {} },
+  hasToken: () => !!API.getToken(),
+
+  async _readBody(r) {
+    try { const t = await r.text(); try { return { json: JSON.parse(t), text: t }; } catch (_) { return { json: null, text: t }; } } catch (_) { return { json: null, text: "" }; }
+  },
+  async _post(path, body, opts) {
+    const t = API.getToken();
+    if (!t) throw Object.assign(new Error("no token"), { code: "NO_TOKEN" });
+    const timeout = (opts && opts.timeout) || 30000;
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const r = await fetch(BASE + path, { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t }, body: JSON.stringify(body || {}), signal: ctrl.signal });
+      clearTimeout(tid);
+      if (r.status === 401 || r.status === 403) throw Object.assign(new Error("unauthorized"), { code: "AUTH" });
+      if (!r.ok) { const b = await API._readBody(r); throw Object.assign(new Error("HTTP " + r.status + ": " + (b.text || "").slice(0, 200)), { code: "HTTP_" + r.status }); }
+      return r.json();
+    } catch (e) {
+      clearTimeout(tid);
+      if (e.name === "AbortError") throw Object.assign(new Error("timeout"), { code: "TIMEOUT" });
+      throw e;
+    }
+  },
+
+  queryCorpus: (query, limit) => API._post("/api/query", { query, limit: limit || 5 }, { timeout: 25000 }),
+  captureInsight: (body) => API._post("/api/capture", body),
+};
+
+// Item 4 mirror: pending-capture queue shared with /uc3
+const PENDING_CAPTURES_KEY = "spacesc_pending_captures";
+function pendingAddCapture(type, content) {
+  try {
+    const raw = localStorage.getItem(PENDING_CAPTURES_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(arr)) return;
+    arr.push({
+      local_id: "local-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+      type, content: (content || "").trim(),
+      created_at: Math.floor(Date.now() / 1000),
+    });
+    localStorage.setItem(PENDING_CAPTURES_KEY, JSON.stringify(arr));
+  } catch (_) {}
+}
+
+// Recent queries persistence
+const RECENT_QUERIES_KEY = "spacesc_corpus_recent";
+const RECENT_QUERIES_MAX = 8;
+function loadRecent() {
+  try {
+    const raw = localStorage.getItem(RECENT_QUERIES_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch (_) { return []; }
+}
+function pushRecent(query) {
+  const q = (query || "").trim();
+  if (!q) return [];
+  let arr = loadRecent().filter((r) => r !== q);
+  arr.unshift(q);
+  arr = arr.slice(0, RECENT_QUERIES_MAX);
+  try { localStorage.setItem(RECENT_QUERIES_KEY, JSON.stringify(arr)); } catch (_) {}
+  return arr;
+}
+function clearRecent() {
+  try { localStorage.removeItem(RECENT_QUERIES_KEY); } catch (_) {}
+}
+
+// HELPERS
+const DOMAIN_OPTIONS = ["Cross-cutting", "Policy", "Economics", "Technology"];
+const CLAIM_TYPE_OPTIONS = ["observation", "hypothesis", "synthesis", "framing-shift"];
+const CONFIDENCE_OPTIONS = ["medium", "low", "high"];
+const LIMIT_OPTIONS = [5, 10, 20];
+
+const truncate = (s, n) => {
+  if (!s) return "";
+  if (s.length <= n) return s;
+  return s.slice(0, n).replace(/[,;:.\s]+\S*$/, "") + "…";
+};
+
+const SPACESC_TOOLS = [
+  { id: "commute",  name: "Commute",   desc: "Audio · listen + learn",          icon: "🎧", href: "/uc3" },
+  { id: "desk",     name: "Desk",      desc: "Today · inbox · captures",        icon: "🗂",  href: "/desk" },
+  { id: "reading",  name: "Reading",   desc: "Deep read + annotation",          icon: "📖", href: "/reading" },
+  { id: "corpus",   name: "Corpus",    desc: "Search the knowledge base",       icon: "🔍", href: "/corpus", active: true },
+  { id: "insights", name: "Insights",  desc: "Approve or reject claims",        icon: "💎", href: "/insights" },
+  { id: "posture",  name: "Posture",   desc: "Three-domain balance",            icon: "📊", href: "/posture" },
+  { id: "pipeline", name: "Pipeline",  desc: "Ingestion health + errors",       icon: "🩺", href: "/pipeline" },
+  { id: "log",      name: "Build Log", desc: "What shipped, what's next",       icon: "📒", href: "/log" },
+  { id: "feedback", name: "Reports",   desc: "Your 🚩 captures + diagnoses",    icon: "🚩", href: "/feedback" },
+  { id: "map",      name: "System map", desc: "Five use cases · build tree",    icon: "🗺",  href: "/system-map" },
+];
+
+// THEME
+const THEME_KEY = "spacesc_theme";
+function applyTheme(mode) {
+  const dark = mode === "dark" || (mode === "system" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const root = document.documentElement;
+  if (dark) {
+    root.style.setProperty("--bg", "#1f1d18");
+    root.style.setProperty("--bg-elev", "#2a2823");
+    root.style.setProperty("--bg-sunken", "#3a3833");
+    root.style.setProperty("--ink", "#faf9f5");
+    root.style.setProperty("--ink-soft", "#c4c2bb");
+    root.style.setProperty("--line", "#4a4843");
+    root.style.setProperty("--line-strong", "#5a5853");
+  } else {
+    root.style.removeProperty("--bg");
+    root.style.removeProperty("--bg-elev");
+    root.style.removeProperty("--bg-sunken");
+    root.style.removeProperty("--ink");
+    root.style.removeProperty("--ink-soft");
+    root.style.removeProperty("--line");
+    root.style.removeProperty("--line-strong");
+  }
+}
+try { applyTheme(localStorage.getItem(THEME_KEY) || "system"); } catch (_) {}
+
+// NavMenu
+function NavMenu() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className={"nav-pill" + (open ? " open" : "")} onClick={() => setOpen(!open)} aria-label="Open SpaceSC navigation">
+        <span className="nav-pill-dot"></span>
+        <span>SpaceSC</span>
+        <span className="nav-pill-chev">▼</span>
+      </button>
+      {open && (
+        <>
+          <div className="nav-backdrop" onClick={() => setOpen(false)}></div>
+          <div className="nav-menu" role="dialog" aria-label="SpaceSC tools">
+            <div className="nav-menu-header">Jump to</div>
+            {SPACESC_TOOLS.map((tool) => (
+              <a key={tool.id}
+                className={"nav-menu-item" + (tool.active ? " active" : "")}
+                href={tool.href}
+                onClick={(e) => { if (tool.active) e.preventDefault(); setOpen(false); }}>
+                <span className="nav-menu-icon">{tool.icon}</span>
+                <span className="nav-menu-text">
+                  <div className="nav-menu-name">{tool.name}</div>
+                  <div className="nav-menu-desc">{tool.desc}</div>
+                </span>
+                {tool.active ? null : <span className="nav-menu-arrow">→</span>}
+              </a>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+// LoginPage
+function LoginPage({ onSaved }) {
+  const [val, setVal] = useState("");
+  const [err, setErr] = useState(null);
+  const [verifying, setVerifying] = useState(false);
+
+  const tryToken = async () => {
+    if (!val.trim()) return;
+    setVerifying(true); setErr(null);
+    API.setToken(val.trim());
+    try {
+      await API.queryCorpus("ping", 1);
+      onSaved();
+    } catch (e) {
+      if (e.code === "AUTH" || (e.message && e.message.includes("401"))) {
+        API.clearToken();
+        setErr("Token rejected. Paste the right one.");
+      } else {
+        // Don't auto-advance — hold on login page so the user sees the
+        // error and can retry deliberately (per /insights NB#2 lesson).
+        setErr("Saved, but couldn't reach the server (" + (e.message || "unknown") + "). Tap Save to retry.");
+      }
+      setVerifying(false);
+    }
+  };
+
+  return (
+    <div className="app">
+      <div className="login-page">
+        <div className="login-title">SpaceSC Corpus</div>
+        <div className="login-sub">Paste your bearer token to begin. Same token across all SpaceSC surfaces.</div>
+        <input className="login-input" type="password" placeholder="bearer token" value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") tryToken(); }} autoFocus />
+        {err && <div style={{ color: "var(--red)", fontSize: 13, marginTop: 10 }}>{err}</div>}
+        <button className="login-btn" onClick={tryToken} disabled={verifying}>
+          {verifying ? "Verifying…" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// CAPTURE MODAL — fires /api/capture with a chunk's source_doc_id pre-attached
+function CaptureModal({ chunk, query, onClose, onDone, showToast, onAuthLost }) {
+  const [claim, setClaim] = useState("");
+  const [claimType, setClaimType] = useState("observation");
+  const [domain, setDomain] = useState("Cross-cutting");
+  const [confidence, setConfidence] = useState("medium");
+  const [submitting, setSubmitting] = useState(false);
+
+  const sourceId = chunk.skr_page_id || chunk.source_doc_id || chunk.doc_id || null;
+  const sourceTitle = chunk.title || chunk.document_title || sourceId || "(untitled)";
+
+  const submit = async () => {
+    if (!claim.trim()) return;
+    setSubmitting(true);
+    try {
+      const payload = {
+        claim: claim.trim(),
+        claim_type: claimType,
+        domain_primary: domain,
+        confidence,
+        source_doc_ids: sourceId ? [sourceId] : [],
+        query_context: query ? `Captured from corpus query "${truncate(query, 120)}" against "${truncate(sourceTitle, 80)}".` : `Captured from corpus chunk "${truncate(sourceTitle, 80)}".`,
+      };
+      const res = await API.captureInsight(payload);
+      try { pendingAddCapture("insight", claim.trim()); } catch (_) {}
+      let msg = "Insight saved";
+      if (res && res.insight_id) msg = "Insight saved · id " + String(res.insight_id).slice(0, 8) + "…";
+      onDone(msg);
+    } catch (e) {
+      if (e.code === "AUTH") { onAuthLost && onAuthLost(); return; }
+      if (e.message && e.message.includes("mac_offline")) {
+        try { pendingAddCapture("insight", claim.trim()); } catch (_) {}
+        onDone("Captured · we'll finish syncing when the local agent is back online.");
+      } else {
+        showToast && showToast("Capture failed: " + (e.message || "unknown"));
+        setSubmitting(false);
+      }
+    }
+  };
+
+  // Esc closes; ⌘/Ctrl+Enter submits.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") { onClose(); e.preventDefault(); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && claim.trim() && !submitting) { submit(); e.preventDefault(); return; }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [claim, submitting]);
+
+  return (
+    <div className="cap-backdrop" onClick={onClose}>
+      <div className="cap-sheet" role="dialog" aria-modal="true" aria-label="Capture insight" onClick={(e) => e.stopPropagation()}>
+        <div className="cap-title">💡 Capture insight</div>
+        <div className="cap-sub">From this corpus chunk · ⌘+Enter to save</div>
+        <textarea
+          className="cap-input" placeholder="The claim is X, observed in Y context…"
+          value={claim} onChange={(e) => setClaim(e.target.value)} autoFocus
+        />
+        <div className="cap-fields">
+          <div>
+            <div className="cap-field-label">Domain</div>
+            <select className="cap-select" value={domain} onChange={(e) => setDomain(e.target.value)} aria-label="Domain">
+              {DOMAIN_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div>
+            <div className="cap-field-label">Claim type</div>
+            <select className="cap-select" value={claimType} onChange={(e) => setClaimType(e.target.value)} aria-label="Claim type">
+              {CLAIM_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <div className="cap-field-label">Confidence</div>
+            <select className="cap-select" value={confidence} onChange={(e) => setConfidence(e.target.value)} aria-label="Confidence">
+              {CONFIDENCE_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="cap-source-line">source: {truncate(sourceTitle, 100)}{sourceId ? ` (${sourceId})` : ""}</div>
+        <div className="cap-buttons">
+          <button className="cap-btn-sec" onClick={onClose}>Cancel</button>
+          <button className="cap-btn-pri" onClick={submit} disabled={submitting || !claim.trim()}>
+            {submitting ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// CHUNK CARD
+function ChunkResult({ chunk, rank, query, onCapture }) {
+  const title = chunk.title || chunk.document_title || chunk.source_doc_id || "(untitled chunk)";
+  const body = chunk.content || chunk.text || chunk.excerpt || "";
+  const score = chunk.score != null ? Number(chunk.score).toFixed(3) : "";
+  const sourceId = chunk.skr_page_id || chunk.source_doc_id || chunk.doc_id || "";
+  const notionUrl = sourceId ? "https://www.notion.so/" + String(sourceId).replace(/-/g, "") : null;
+
+  return (
+    <div className="chunk-card">
+      <div className="chunk-head">
+        <div className="chunk-rank">{rank}</div>
+        <div className="chunk-title">{title}</div>
+        {score && <div className="chunk-score">score {score}</div>}
+      </div>
+      <div className="chunk-body">{truncate(body, 1200)}</div>
+      {sourceId && <div className="chunk-source">{sourceId}</div>}
+      <div className="chunk-actions">
+        <button className="chunk-btn chunk-btn-primary" onClick={() => onCapture(chunk)}>
+          💡 Capture as insight
+        </button>
+        {notionUrl && (
+          <a className="chunk-btn" href={notionUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "none", lineHeight: "normal" }}>
+            Open in Notion ↗
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// QUERY VIEW (the main view)
+function QueryView({ showToast, onAuthLost }) {
+  const [query, setQuery] = useState("");
+  const [limit, setLimit] = useState(5);
+  const [recent, setRecent] = useState(() => loadRecent());
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [results, setResults] = useState(null); // null = no query yet; [] = no results
+  const [lastQuery, setLastQuery] = useState(null);
+  const [captureChunk, setCaptureChunk] = useState(null);
+  const [macOffline, setMacOffline] = useState(false);
+  const seqRef = useRef(0);
+
+  const runQuery = useCallback(async (q) => {
+    const trimmed = (q || "").trim();
+    if (!trimmed) return;
+    const mySeq = ++seqRef.current;
+    setLoading(true); setError(null); setMacOffline(false);
+    try {
+      const r = await API.queryCorpus(trimmed, limit);
+      // Only apply if our seq is still the latest — guards against
+      // out-of-order responses if the user re-runs before the prior settles.
+      if (mySeq !== seqRef.current) return;
+      const chunks = (r && (r.chunks || r.results || r.items)) || [];
+      setResults(chunks);
+      setLastQuery(trimmed);
+      setRecent(pushRecent(trimmed));
+    } catch (e) {
+      if (mySeq !== seqRef.current) return;
+      if (e.code === "AUTH") { onAuthLost && onAuthLost(); return; }
+      if (e.message && e.message.includes("mac_offline")) {
+        // /api/query goes through n8n, not il-server, so mac_offline
+        // shouldn't fire here — but be defensive.
+        setMacOffline(true);
+        setResults([]);
+      } else {
+        setError(e.message || "query failed");
+      }
+    } finally {
+      if (mySeq === seqRef.current) setLoading(false);
+    }
+  }, [limit, onAuthLost]);
+
+  const submit = (e) => { if (e) e.preventDefault(); runQuery(query); };
+  const onInputKey = (e) => {
+    // Cmd/Ctrl+Enter or Enter (without shift) submits; Shift+Enter is newline.
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+  };
+
+  const clearAll = () => {
+    if (recent.length === 0) return;
+    if (!window.confirm("Clear recent query history?")) return;
+    clearRecent();
+    setRecent([]);
+  };
+
+  return (
+    <div>
+      <div className="query-box">
+        <textarea
+          className="query-input"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onInputKey}
+          placeholder="Ask the corpus a question — natural language, claim, framing test…"
+          aria-label="Corpus query"
+          autoFocus
+        />
+        <div className="query-row">
+          <div className="query-hint">Enter to search · Shift+Enter for newline</div>
+          <select className="query-limit" value={limit} onChange={(e) => setLimit(parseInt(e.target.value, 10))} aria-label="Result limit">
+            {LIMIT_OPTIONS.map((n) => <option key={n} value={n}>{n} chunks</option>)}
+          </select>
+          <button className="query-btn" onClick={submit} disabled={loading || !query.trim()}>
+            {loading ? "Searching…" : "Search"}
+          </button>
+        </div>
+      </div>
+
+      {recent.length > 0 && (
+        <div className="recent-row" role="list" aria-label="Recent queries">
+          <span className="recent-label">Recent</span>
+          {recent.map((r, i) => (
+            <button key={i} className="recent-chip" onClick={() => { setQuery(r); runQuery(r); }} title={r}>{truncate(r, 60)}</button>
+          ))}
+          <button className="recent-clear" onClick={clearAll}>Clear</button>
+        </div>
+      )}
+
+      {macOffline && (
+        <div className="mac-banner">
+          ⚠ The Mac (il-server) is offline — capturing insights from chunks will queue locally instead of syncing immediately.
+        </div>
+      )}
+
+      {loading && (
+        <div className="empty"><div className="spinner"></div></div>
+      )}
+
+      {!loading && error && (
+        <div className="empty">
+          <div className="empty-icon">⚠</div>
+          Couldn't search: {error}
+          <div style={{ marginTop: 12 }}>
+            <button className="chunk-btn" onClick={() => runQuery(query || lastQuery || "")}>↻ Retry</button>
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && results !== null && (
+        <>
+          <div className="result-header">
+            <div className="result-title">Results</div>
+            <div className="result-meta">{results.length} chunk{results.length === 1 ? "" : "s"}{lastQuery ? ` · "${truncate(lastQuery, 80)}"` : ""}</div>
+          </div>
+          {results.length === 0 ? (
+            <div className="empty">
+              <div className="empty-icon">🔍</div>
+              No chunks returned. Try rephrasing — more concrete claims often retrieve better than abstract framings.
+            </div>
+          ) : (
+            results.map((c, i) => (
+              <ChunkResult
+                key={(c.skr_page_id || c.source_doc_id || i) + "-" + i}
+                chunk={c}
+                rank={i + 1}
+                query={lastQuery}
+                onCapture={(chunk) => setCaptureChunk(chunk)}
+              />
+            ))
+          )}
+        </>
+      )}
+
+      {!loading && !error && results === null && (
+        <div className="empty">
+          <div className="empty-icon">🔍</div>
+          Ask your corpus a question above to begin.
+        </div>
+      )}
+
+      {captureChunk && (
+        <CaptureModal
+          chunk={captureChunk}
+          query={lastQuery}
+          onClose={() => setCaptureChunk(null)}
+          onDone={(msg) => { setCaptureChunk(null); showToast && showToast(msg); }}
+          showToast={showToast}
+          onAuthLost={onAuthLost}
+        />
+      )}
+    </div>
+  );
+}
+
+// SETTINGS
+function SettingsView({ onClearToken, showToast }) {
+  const [tokenInput, setTokenInput] = useState("");
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem(THEME_KEY) || "system"; } catch (_) { return "system"; } });
+  const masked = (() => { const t = API.getToken(); return t ? t.slice(0, 6) + "…" + t.slice(-4) : ""; })();
+
+  useEffect(() => { applyTheme(theme); try { localStorage.setItem(THEME_KEY, theme); } catch (_) {} }, [theme]);
+
+  const saveToken = () => {
+    if (!tokenInput.trim()) return;
+    API.setToken(tokenInput.trim());
+    setTokenInput("");
+    showToast && showToast("Token saved");
+  };
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.05, color: "var(--ink-soft)", margin: "8px 0 10px" }}>API token</div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Current</div>
+          <div className="settings-val">{masked || "(not set)"}</div>
+          <input className="settings-input" type="password" placeholder="paste new bearer token" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} />
+          {tokenInput && <button className="settings-action" onClick={saveToken}>Save new token</button>}
+        </div>
+        <div className="settings-row">
+          <button className="settings-action danger" onClick={onClearToken}>Clear token + sign out</button>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.05, color: "var(--ink-soft)", margin: "22px 0 10px" }}>Appearance</div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Theme</div>
+          <div className="filter-row" style={{ marginTop: 8, paddingBottom: 0 }}>
+            {["light", "dark", "system"].map((m) => (
+              <button key={m} className={"filter-chip" + (theme === m ? " active" : "")} onClick={() => setTheme(m)}>{m}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.05, color: "var(--ink-soft)", margin: "22px 0 10px" }}>About</div>
+      <div className="card">
+        <div className="settings-row">
+          <div className="settings-label">Version</div>
+          <div className="settings-val">SpaceSC Corpus · Phase 1 (query + chunks + capture)</div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-label">Server</div>
+          <div className="settings-val">spacesc-mcp.75xnd2784n.workers.dev</div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-label">Legacy v3 surface</div>
+          <div className="settings-val">
+            <a href="/corpus-v3-legacy" style={{ color: "var(--accent)", textDecoration: "none" }}>Open the v3 corpus surface ↗</a>
+            <div style={{ fontSize: 11, color: "var(--ink-mute)", marginTop: 4 }}>Fallback if you need the original (still has CurationChat). Will be retired after Phase 2 + soak.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// APP ROOT
+function App() {
+  const [authed, setAuthed] = useState(() => API.hasToken());
+  const [view, setView] = useState("query"); // query | settings
+  const [toast, setToast] = useState(null);
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator !== "undefined" ? navigator.onLine !== false : true));
+
+  useEffect(() => {
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
+
+  const showToast = useCallback((msg) => {
+    setToast({ id: Date.now(), msg });
+    setTimeout(() => setToast(null), 2400);
+  }, []);
+
+  const onAuthLost = useCallback(() => { API.clearToken(); setAuthed(false); }, []);
+
+  if (!authed) return <LoginPage onSaved={() => setAuthed(true)} />;
+
+  return (
+    <>
+      <NavMenu />
+      {!isOnline && (
+        <div role="status" aria-live="polite" style={{ position: "sticky", top: 0, zIndex: 70, padding: "8px 12px", background: "rgba(133,79,11,.95)", color: "#fff", fontSize: 12, fontWeight: 500, textAlign: "center" }}>
+          ⚠ You're offline — queries will fail until you're back online.
+        </div>
+      )}
+      <div className="app">
+        {view === "settings" ? (
+          <div className="topbar">
+            <button className="topbar-back" onClick={() => setView("query")} aria-label="Close settings">×</button>
+            <div className="topbar-title">Settings</div>
+          </div>
+        ) : (
+          <div className="topbar">
+            <div className="topbar-title">Corpus</div>
+            <div className="topbar-sub">search · capture · phase 1</div>
+            <button className="topbar-gear" onClick={() => setView("settings")} aria-label="Settings">⚙</button>
+          </div>
+        )}
+
+        {view === "query" && <QueryView showToast={showToast} onAuthLost={onAuthLost} />}
+        {view === "settings" && <SettingsView onClearToken={onAuthLost} showToast={showToast} />}
+      </div>
+      {toast && <div className="toast" role="status" aria-live="polite">{toast.msg}</div>}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SpaceSC · Reports</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#faf9f5">
+<style>
+:root {
+  --bg: #faf9f5; --bg-elev: #ffffff; --bg-sunken: #f1efe8;
+  --ink: #1f1d18; --ink-soft: #56544c; --ink-mute: #888780;
+  --line: #e7e5dc; --line-strong: #d4d1c4;
+  --accent: #185fa5; --accent-warm: #854f0b; --green: #3b6d11; --red: #a32d2d; --purple: #534ab7;
+  --shadow: 0 1px 3px rgba(0,0,0,0.05); --shadow-rise: 0 4px 12px rgba(0,0,0,0.08);
+  --radius: 10px; --radius-lg: 16px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { background: var(--bg); color: var(--ink); }
+body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; font-size: 14px; line-height: 1.5; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+input, textarea, select { font: inherit; color: inherit; }
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.app { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+.topbar { display: flex; align-items: center; gap: 12px; padding: 16px 0 12px; border-bottom: 0.5px solid var(--line); margin-bottom: 14px; }
+.topbar-title { font-size: 20px; font-weight: 600; flex: 1; line-height: 1.25; min-width: 0; }
+.topbar-sub { font-size: 12px; color: var(--ink-mute); margin-left: 8px; }
+.topbar-gear { font-size: 18px; color: var(--ink-soft); padding: 4px 8px; }
+.topbar-back { font-size: 22px; padding: 4px 8px; margin-left: -8px; color: var(--ink-soft); }
+
+/* Summary banner */
+.summary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 16px; }
+@media (max-width: 600px) { .summary { grid-template-columns: repeat(3, 1fr); } }
+.summary-card { background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius); padding: 10px 12px; text-align: center; }
+.summary-num { font-size: 22px; font-weight: 700; line-height: 1.1; }
+.summary-lbl { font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+.summary-card.open .summary-num { color: var(--accent-warm); }
+.summary-card.resolved .summary-num { color: var(--green); }
+.summary-card.wontfix .summary-num { color: var(--ink-mute); }
+.summary-card.blindspots .summary-num { color: var(--purple); }
+
+.filter-row { display: flex; gap: 6px; padding: 4px 0 14px; flex-wrap: wrap; }
+.filter-chip { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; color: var(--ink-soft); background: var(--bg-sunken); border: 0.5px solid var(--line); white-space: nowrap; cursor: pointer; }
+.filter-chip.active { background: var(--ink); color: var(--bg-elev); border-color: var(--ink); }
+.filter-chip-count { font-size: 11px; opacity: 0.7; margin-left: 4px; }
+
+/* Two-pane: list + detail */
+.fb-grid { display: grid; grid-template-columns: 360px 1fr; gap: 14px; align-items: start; }
+@media (max-width: 800px) { .fb-grid { grid-template-columns: 1fr; } }
+
+.fb-list { background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; max-height: calc(100vh - 230px); overflow-y: auto; }
+.fb-row { display: block; width: 100%; text-align: left; padding: 12px 14px; border-bottom: 0.5px solid var(--line); cursor: pointer; background: var(--bg-elev); }
+.fb-row:hover { background: var(--bg-sunken); }
+.fb-row.active { background: var(--bg-sunken); border-left: 3px solid var(--ink); padding-left: 11px; }
+.fb-row:last-child { border-bottom: none; }
+.fb-row-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.fb-row-icon { font-size: 16px; flex-shrink: 0; }
+.fb-row-surface { font-size: 11px; color: var(--ink-mute); font-family: ui-monospace, monospace; }
+.fb-row-status { font-size: 9px; padding: 1px 6px; border-radius: 999px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-left: auto; flex-shrink: 0; }
+.fb-row-status.open       { background: rgba(133,79,11,.12);  color: var(--accent-warm); }
+.fb-row-status.in_progress{ background: rgba(24,95,165,.12);  color: var(--accent); }
+.fb-row-status.resolved   { background: rgba(59,109,17,.12);  color: var(--green); }
+.fb-row-status.wontfix    { background: rgba(31,29,24,.10);   color: var(--ink-mute); }
+.fb-row-notes { font-size: 13px; color: var(--ink); line-height: 1.4; }
+.fb-row-meta { font-size: 11px; color: var(--ink-mute); margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+.fb-row-bs-tag { font-size: 10px; color: var(--purple); font-weight: 600; }
+
+/* Detail pane */
+.detail { background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius-lg); padding: 20px 22px; min-height: 240px; }
+.detail-h { font-size: 18px; font-weight: 600; line-height: 1.3; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; }
+.detail-meta { font-size: 12px; color: var(--ink-mute); margin-bottom: 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.detail-meta a { color: var(--accent); text-decoration: none; }
+.detail-meta a:hover { text-decoration: underline; }
+
+.section-h { font-size: 11px; font-weight: 700; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin: 18px 0 8px; }
+.section-h:first-of-type { margin-top: 0; }
+.quote { background: var(--bg-sunken); border-left: 3px solid var(--ink); padding: 12px 14px; border-radius: 4px; font-size: 14px; line-height: 1.55; color: var(--ink); white-space: pre-wrap; }
+.context-grid { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 12px; }
+.context-key { color: var(--ink-mute); font-family: ui-monospace, monospace; }
+.context-val { color: var(--ink); font-family: ui-monospace, monospace; word-break: break-all; }
+
+/* Diagnosis panel */
+.diag { background: linear-gradient(180deg, rgba(83,74,183,0.05), rgba(83,74,183,0.02)); border: 0.5px solid rgba(83,74,183,0.25); border-radius: 10px; padding: 14px 16px; margin-top: 8px; }
+.diag-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.diag-badge { background: var(--purple); color: white; font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 700; letter-spacing: 0.02em; }
+.diag-cat { font-size: 11px; color: var(--purple); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.diag-cat-status { font-size: 10px; padding: 1px 6px; border-radius: 999px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-left: auto; }
+.diag-cat-status.open     { background: rgba(133,79,11,.12);  color: var(--accent-warm); }
+.diag-cat-status.applied  { background: rgba(59,109,17,.12);  color: var(--green); }
+.diag-cat-status.rejected { background: rgba(31,29,24,.10);   color: var(--ink-mute); }
+.diag-row { margin: 8px 0; }
+.diag-row-lbl { font-size: 10px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; font-weight: 700; }
+.diag-row-val { font-size: 13px; line-height: 1.55; color: var(--ink); }
+
+/* Timeline */
+.timeline { margin-top: 8px; }
+.tl-row { display: grid; grid-template-columns: 24px 1fr; gap: 8px; padding: 6px 0; align-items: start; }
+.tl-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ink-mute); margin-top: 5px; justify-self: center; }
+.tl-dot.captured { background: var(--accent-warm); }
+.tl-dot.diagnosed { background: var(--purple); }
+.tl-dot.resolved { background: var(--green); }
+.tl-text { font-size: 13px; color: var(--ink); line-height: 1.4; }
+.tl-text strong { font-weight: 600; }
+.tl-time { font-size: 11px; color: var(--ink-mute); }
+
+/* Patterns view */
+.patterns { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.pattern-card { background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: var(--radius); padding: 14px 16px; cursor: pointer; }
+.pattern-card:hover { background: var(--bg-sunken); }
+.pattern-title { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.pattern-meta { font-size: 11px; color: var(--ink-mute); margin-bottom: 6px; }
+.pattern-count { font-size: 22px; font-weight: 700; color: var(--purple); }
+
+/* Empty / loading */
+.empty { padding: 36px 16px; text-align: center; color: var(--ink-mute); font-size: 13px; line-height: 1.5; }
+.empty-large { padding: 64px 24px; }
+.empty-icon { font-size: 32px; margin-bottom: 8px; opacity: 0.5; }
+.spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--line); border-top-color: var(--ink-soft); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.toast { position: fixed; bottom: 28px; left: 50%; transform: translate(-50%, 0); background: var(--ink); color: var(--bg-elev); padding: 10px 16px; border-radius: 999px; font-size: 13px; box-shadow: var(--shadow-rise); z-index: 100; }
+
+/* Login */
+.login-page { max-width: 360px; margin: 80px auto; padding: 24px; }
+.login-title { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+.login-sub { font-size: 13px; color: var(--ink-soft); margin-bottom: 18px; }
+.login-input { width: 100%; padding: 12px 14px; border-radius: 8px; background: var(--bg-sunken); border: 0.5px solid var(--line); font-size: 14px; font-family: ui-monospace, monospace; margin-bottom: 10px; }
+.login-btn { width: 100%; padding: 12px; border-radius: 8px; background: var(--ink); color: var(--bg-elev); font-size: 14px; font-weight: 600; border: none; }
+
+/* NavMenu */
+.nav-pill { position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); z-index: 80; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px 7px 10px; background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); font-size: 12px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.nav-pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
+.nav-pill-chev { font-size: 10px; color: var(--ink-mute); transition: transform .2s; }
+.nav-pill.open .nav-pill-chev { transform: rotate(180deg); }
+.nav-backdrop { position: fixed; inset: 0; background: rgba(31,29,24,0.18); z-index: 79; }
+.nav-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 44px)); right: max(10px, env(safe-area-inset-right)); z-index: 80; width: min(280px, calc(100vw - 20px)); background: var(--bg-elev); border: 0.5px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(31,29,24,0.18); overflow: hidden; }
+.nav-menu-header { padding: 10px 14px 8px; border-bottom: 0.5px solid var(--line); font-size: 10px; font-weight: 700; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; }
+.nav-menu-item { display: flex; align-items: center; gap: 10px; padding: 12px 14px; text-decoration: none; color: var(--ink); border-bottom: 0.5px solid var(--line); }
+.nav-menu-item:last-child { border-bottom: none; }
+.nav-menu-item.active { background: var(--ink); color: var(--bg-elev); }
+.nav-menu-icon { font-size: 18px; flex-shrink: 0; width: 26px; text-align: center; }
+.nav-menu-text { flex: 1; min-width: 0; }
+.nav-menu-name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.nav-menu-desc { font-size: 11px; color: var(--ink-mute); margin-top: 1px; }
+.nav-menu-item.active .nav-menu-desc { color: rgba(250,249,245,0.7); }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1816; --bg-elev: #25221e; --bg-sunken: #16140f;
+    --ink: #f0ede4; --ink-soft: #bfbcb0; --ink-mute: #8a877c;
+    --line: #3a352c; --line-strong: #4a4438;
+  }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useCallback, useMemo } = React;
+
+const BASE = "https://spacesc-mcp.75xnd2784n.workers.dev";
+const TOKEN_KEY = "spacesc_mcp_token";
+
+const API = {
+  getToken: () => { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (_) { return ""; } },
+  setToken: (t) => { try { localStorage.setItem(TOKEN_KEY, t); } catch (_) {} },
+  clearToken: () => { try { localStorage.removeItem(TOKEN_KEY); } catch (_) {} },
+  hasToken: () => !!API.getToken(),
+
+  async _get(path, opts) {
+    const t = API.getToken();
+    if (!t) throw Object.assign(new Error("no token"), { code: "NO_TOKEN" });
+    const timeout = (opts && opts.timeout) || 30000;
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const r = await fetch(BASE + path, { headers: { Authorization: "Bearer " + t }, signal: ctrl.signal });
+      clearTimeout(tid);
+      if (r.status === 401 || r.status === 403) throw Object.assign(new Error("unauthorized"), { code: "AUTH" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    } catch (e) { clearTimeout(tid); throw e; }
+  },
+  async _post(path, body, opts) {
+    const t = API.getToken();
+    if (!t) throw Object.assign(new Error("no token"), { code: "NO_TOKEN" });
+    const timeout = (opts && opts.timeout) || 30000;
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const r = await fetch(BASE + path, { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t }, body: JSON.stringify(body || {}), signal: ctrl.signal });
+      clearTimeout(tid);
+      if (r.status === 401 || r.status === 403) throw Object.assign(new Error("unauthorized"), { code: "AUTH" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    } catch (e) { clearTimeout(tid); throw e; }
+  },
+
+  listFeedback: (status, limit) => {
+    const params = new URLSearchParams({ include_blindspots: "true", limit: String(limit || 100) });
+    if (status && status !== "all") params.set("status", status);
+    return API._get("/api/feedback-list?" + params.toString());
+  },
+  reanalyze: (feedback_id) => API._post("/api/blindspot-reanalyze", { feedback_id }, { timeout: 60000 }),
+  resolveFeedback: (id, status, note) => API._post("/api/feedback-resolve", { id, status, resolution_note: note }, { timeout: 20000 }),
+  proposeFix: (feedback_id) => API._post("/api/feedback-propose-fix", { feedback_id }, { timeout: 20000 }),
+  applyFix:   (feedback_id) => API._post("/api/feedback-apply",        { feedback_id }, { timeout: 20000 }),
+  fixStatus:  (feedback_id) => API._get("/api/feedback-fix-status?feedback_id=" + feedback_id),
+};
+
+const SPACESC_TOOLS = [
+  { id: "commute",  name: "Commute",   desc: "Audio · listen + learn",          icon: "🎧", href: "/uc3" },
+  { id: "desk",     name: "Desk",      desc: "Today · inbox · captures",        icon: "🗂",  href: "/desk" },
+  { id: "reading",  name: "Reading",   desc: "Deep read + annotation",          icon: "📖", href: "/reading" },
+  { id: "corpus",   name: "Corpus",    desc: "Search the knowledge base",       icon: "🔍", href: "/corpus" },
+  { id: "insights", name: "Insights",  desc: "Approve or reject claims",        icon: "💎", href: "/insights" },
+  { id: "posture",  name: "Posture",   desc: "Three-domain balance",            icon: "📊", href: "/posture" },
+  { id: "pipeline", name: "Pipeline",  desc: "Ingestion health + errors",       icon: "🩺", href: "/pipeline" },
+  { id: "log",      name: "Build Log", desc: "What shipped, what's next",       icon: "📒", href: "/log" },
+  { id: "feedback", name: "Reports",   desc: "Your 🚩 captures + diagnoses",    icon: "🚩", href: "/feedback", active: true },
+  { id: "map",      name: "System map", desc: "Five use cases · build tree",    icon: "🗺",  href: "/system-map" },
+];
+
+const TYPE_META = {
+  bug:       { icon: "🐛", label: "Bug" },
+  confusion: { icon: "🤔", label: "Confusion" },
+  feature:   { icon: "✨", label: "Feature" },
+  question:  { icon: "❓", label: "Question" },
+};
+
+function timeAgo(unix) {
+  if (!unix) return "—";
+  const diff = (Date.now() / 1000) - unix;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+  if (diff < 86400 * 7) return Math.floor(diff / 86400) + "d ago";
+  return new Date(unix * 1000).toLocaleDateString();
+}
+function timeAbs(unix) {
+  if (!unix) return "";
+  return new Date(unix * 1000).toLocaleString();
+}
+function truncate(s, n) {
+  if (!s) return "";
+  if (s.length <= n) return s;
+  return s.slice(0, n).replace(/\s+\S*$/, "") + "…";
+}
+function safeParse(s) { try { return JSON.parse(s || "{}"); } catch (_) { return {}; } }
+
+function NavMenu() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className={"nav-pill" + (open ? " open" : "")} onClick={() => setOpen(!open)} aria-label="Open navigation">
+        <span className="nav-pill-dot"></span>
+        <span>SpaceSC</span>
+        <span className="nav-pill-chev">▼</span>
+      </button>
+      {open && <div className="nav-backdrop" onClick={() => setOpen(false)}></div>}
+      {open && (
+        <div className="nav-menu">
+          <div className="nav-menu-header">Tools</div>
+          {SPACESC_TOOLS.map((t) => (
+            <a key={t.id} href={t.href} className={"nav-menu-item" + (t.active ? " active" : "")}>
+              <span className="nav-menu-icon">{t.icon}</span>
+              <span className="nav-menu-text">
+                <div className="nav-menu-name">{t.name}</div>
+                <div className="nav-menu-desc">{t.desc}</div>
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function LoginPage({ onTokenSet, showToast }) {
+  const [tokenInput, setTokenInput] = useState("");
+  const submit = () => {
+    const t = tokenInput.trim();
+    if (!t) return showToast("Token required");
+    API.setToken(t);
+    onTokenSet();
+  };
+  return (
+    <div className="login-page">
+      <div className="login-title">SpaceSC · Reports</div>
+      <div className="login-sub">Sign in with the MCP client token to see your 🚩 captures and what the system did with them.</div>
+      <input className="login-input" type="password" placeholder="Bearer token" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
+      <button className="login-btn" onClick={submit}>Continue</button>
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  return <span className={"fb-row-status " + status}>{status.replace("_", " ")}</span>;
+}
+
+function FeedbackRow({ item, active, onClick }) {
+  const meta = TYPE_META[item.type] || { icon: "📝", label: item.type };
+  return (
+    <button className={"fb-row" + (active ? " active" : "")} onClick={onClick}>
+      <div className="fb-row-head">
+        <span className="fb-row-icon">{meta.icon}</span>
+        <span className="fb-row-surface">{item.surface}</span>
+        <StatusBadge status={item.status} />
+      </div>
+      <div className="fb-row-notes">{truncate(item.notes_text || item.voice_transcript || "(no notes)", 130)}</div>
+      <div className="fb-row-meta">
+        <span>{timeAgo(item.captured_at)}</span>
+        {item.blindspot && (
+          <>
+            <span>·</span>
+            <span className="fb-row-bs-tag">
+              🔬 {item.blindspot.missed_check || "new"}
+              {item.blindspot.status === "applied" && " ✓ applied"}
+              {item.blindspot.status === "rejected" && " · rejected"}
+              {item.blindspot.status === "open" && " · open"}
+            </span>
+          </>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function DiagnosisPanel({ blindspot, onReanalyze, reanalyzing }) {
+  if (!blindspot) {
+    return (
+      <div className="diag" style={{ borderStyle: "dashed" }}>
+        <div className="diag-h">
+          <span className="diag-cat">Diagnosis pending</span>
+          <span className="diag-cat-status open">pending</span>
+        </div>
+        <div className="diag-row-val">
+          The adversarial UAT pass hasn't run for this report yet. It usually takes ~10 seconds after capture.
+        </div>
+        <button className="settings-action" style={{ color: "var(--purple)", marginTop: 8, padding: "6px 0" }} onClick={onReanalyze} disabled={reanalyzing}>
+          {reanalyzing ? "Analyzing…" : "↻ Run diagnosis now"}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="diag">
+      <div className="diag-h">
+        <span className="diag-badge">{blindspot.missed_check || "new pattern"}</span>
+        {blindspot.pattern_category && <span className="diag-cat">{blindspot.pattern_category}</span>}
+        <span className={"diag-cat-status " + blindspot.status}>{blindspot.status}</span>
+      </div>
+      <div className="diag-row">
+        <div className="diag-row-lbl">What we missed</div>
+        <div className="diag-row-val">{blindspot.why_text}</div>
+      </div>
+      <div className="diag-row">
+        <div className="diag-row-lbl">Check we should add</div>
+        <div className="diag-row-val" style={{ color: "var(--purple)" }}>{blindspot.proposed_new_check}</div>
+      </div>
+      {blindspot.applied_to_adr && (
+        <div className="diag-row">
+          <div className="diag-row-lbl">Promoted to ADR-024</div>
+          <div className="diag-row-val">
+            <a href="https://github.com/" style={{ color: "var(--green)" }}>{blindspot.applied_to_adr}</a>
+            {blindspot.resolution_note && <span style={{ color: "var(--ink-mute)" }}> · {blindspot.resolution_note}</span>}
+          </div>
+        </div>
+      )}
+      {blindspot.status === "rejected" && blindspot.resolution_note && (
+        <div className="diag-row">
+          <div className="diag-row-lbl">Why rejected</div>
+          <div className="diag-row-val" style={{ color: "var(--ink-mute)" }}>{blindspot.resolution_note}</div>
+        </div>
+      )}
+      <button className="settings-action" style={{ color: "var(--purple)", padding: "8px 0", fontSize: 12 }} onClick={onReanalyze} disabled={reanalyzing}>
+        {reanalyzing ? "Re-analyzing…" : "↻ Re-run diagnosis"}
+      </button>
+    </div>
+  );
+}
+
+function Timeline({ item }) {
+  const events = [];
+  events.push({ kind: "captured", ts: item.captured_at, label: "Captured on " + item.surface });
+  if (item.blindspot) {
+    events.push({
+      kind: "diagnosed",
+      ts: item.blindspot.created_at,
+      label: "Adversarial diagnosis → " + (item.blindspot.missed_check || "new pattern"),
+    });
+    if (item.blindspot.resolved_at) {
+      events.push({
+        kind: "resolved",
+        ts: item.blindspot.resolved_at,
+        label: "Diagnosis " + item.blindspot.status + (item.blindspot.applied_to_adr ? " → " + item.blindspot.applied_to_adr : ""),
+      });
+    }
+  }
+  if (item.status === "in_progress") {
+    events.push({ kind: "wip", ts: item.captured_at + 1, label: "Claude opened this" });
+  }
+  if (item.resolved_at) {
+    events.push({ kind: "resolved", ts: item.resolved_at, label: "Marked " + item.status });
+  }
+  events.sort((a, b) => a.ts - b.ts);
+  return (
+    <div className="timeline">
+      {events.map((e, i) => (
+        <div key={i} className="tl-row">
+          <div className={"tl-dot " + e.kind}></div>
+          <div>
+            <div className="tl-text">{e.label}</div>
+            <div className="tl-time">{timeAbs(e.ts)} · {timeAgo(e.ts)}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// FixPanel — render the auto-fix state for one feedback item.
+// States it has to handle: never-proposed, proposing, proposed (T1/T2/T3),
+// applying, ci-running, merged, failed.
+function FixPanel({ item, onPropose, onApply, proposing, applying }) {
+  const fix = item.fix;
+  // Never proposed
+  if (!fix) {
+    return (
+      <div className="diag" style={{ borderStyle: "dashed", borderColor: "var(--line-strong)" }}>
+        <div className="diag-row-val" style={{ color: "var(--ink-soft)" }}>
+          The system can attempt to fix this on its own. It'll tier-classify the issue (T1 trivial · T2 judgment · T3 needs session), propose a code patch, and open a PR.
+        </div>
+        <button className="settings-action" style={{ color: "var(--purple)", marginTop: 10, padding: "8px 0", fontWeight: 600 }} onClick={onPropose} disabled={proposing}>
+          {proposing ? "Dispatching…" : "🤖 Propose auto-fix"}
+        </button>
+      </div>
+    );
+  }
+  // In-flight — pending (queued for cron) or proposing (actively running)
+  if (fix.status === "pending" || fix.status === "apply-requested") {
+    const isApply = fix.status === "apply-requested";
+    return (
+      <div className="diag" style={{ borderStyle: "dashed" }}>
+        <div className="diag-h">
+          <span className="diag-cat">{isApply ? "Merge queued" : "Queued for fix agent"}</span>
+          <span className="diag-cat-status open">queued</span>
+        </div>
+        <div className="diag-row-val">
+          {isApply
+            ? "Your merge click is queued. The next cron tick (every 3 min) will fire the merge workflow."
+            : "Queued for the fix agent. The next cron tick (every 3 min) will pick this up and start analyzing. This page polls automatically."}
+        </div>
+      </div>
+    );
+  }
+  if (fix.status === "proposing" || fix.status === "applying" || fix.status === "ci-running") {
+    const label = fix.status === "applying" ? "Merging" : fix.status === "ci-running" ? "Waiting for CI" : "Analyzing + writing patch";
+    return (
+      <div className="diag" style={{ borderStyle: "dashed" }}>
+        <div className="diag-h">
+          <span className="diag-cat">{label}</span>
+          <span className="diag-cat-status open">working</span>
+        </div>
+        <div className="diag-row-val">
+          {fix.status === "proposing"
+            ? "The fix agent is reading the codebase. Tier classification + diff usually takes 1-3 min."
+            : fix.status === "ci-running"
+              ? "Tests are running on the PR. Will land when green."
+              : "Squashing + merging the PR."}
+        </div>
+        {fix.workflow_run_url && (
+          <div className="diag-row-val" style={{ fontSize: 11, marginTop: 6 }}>
+            <a href={fix.workflow_run_url} target="_blank" style={{ color: "var(--accent)" }}>Watch the workflow run →</a>
+          </div>
+        )}
+      </div>
+    );
+  }
+  // T3 — punted
+  if (fix.status === "punted") {
+    return (
+      <div className="diag" style={{ background: "rgba(133,79,11,0.05)", borderColor: "rgba(133,79,11,0.25)" }}>
+        <div className="diag-h">
+          <span className="diag-badge" style={{ background: "var(--accent-warm)" }}>T3</span>
+          <span className="diag-cat">needs a real session</span>
+        </div>
+        <div className="diag-row">
+          <div className="diag-row-lbl">Why this can't auto-fix</div>
+          <div className="diag-row-val">{fix.tier_rationale || "(no rationale)"}</div>
+        </div>
+        <div className="diag-row-val" style={{ fontSize: 12, color: "var(--ink-mute)" }}>
+          Next time Claude Code opens this repo, it'll see this in the open-blindspots list and handle it.
+        </div>
+        <button className="settings-action" style={{ color: "var(--purple)", padding: "6px 0", fontSize: 12 }} onClick={onPropose} disabled={proposing}>
+          ↻ Re-attempt (maybe it can now)
+        </button>
+      </div>
+    );
+  }
+  // Failed
+  if (fix.status === "failed") {
+    return (
+      <div className="diag" style={{ background: "rgba(163,45,45,0.05)", borderColor: "rgba(163,45,45,0.25)" }}>
+        <div className="diag-h">
+          <span className="diag-badge" style={{ background: "var(--red)" }}>failed</span>
+        </div>
+        <div className="diag-row-val">{fix.error_text || "(no error text)"}</div>
+        <button className="settings-action" style={{ color: "var(--purple)", marginTop: 8, padding: "6px 0", fontSize: 12 }} onClick={onPropose} disabled={proposing}>
+          ↻ Try again
+        </button>
+      </div>
+    );
+  }
+  // Merged
+  if (fix.status === "merged") {
+    return (
+      <div className="diag" style={{ background: "rgba(59,109,17,0.05)", borderColor: "rgba(59,109,17,0.25)" }}>
+        <div className="diag-h">
+          <span className="diag-badge" style={{ background: "var(--green)" }}>{fix.tier || "fix"}</span>
+          <span className="diag-cat" style={{ color: "var(--green)" }}>merged + deployed</span>
+        </div>
+        {fix.pr_url && <div className="diag-row-val" style={{ fontSize: 12 }}><a href={fix.pr_url} target="_blank" style={{ color: "var(--accent)" }}>PR #{fix.pr_number} →</a></div>}
+        {fix.proposed_rationale && (
+          <div className="diag-row" style={{ marginTop: 8 }}>
+            <div className="diag-row-lbl">What changed</div>
+            <div className="diag-row-val">{fix.proposed_rationale}</div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  // Proposed (T1 or T2) — show diff, status, action
+  const isT1 = fix.tier === "T1";
+  const isT2 = fix.tier === "T2";
+  const isCiRunning = fix.status === "ci-running";
+  const isApplying = fix.status === "applying";
+  const diffLines = (fix.proposed_diff || "").split("\n").length - 1;
+  const filesTouched = (() => { try { return JSON.parse(fix.files_touched || "[]"); } catch (_) { return []; } })();
+  return (
+    <div className="diag">
+      <div className="diag-h">
+        <span className="diag-badge" style={{ background: isT1 ? "var(--green)" : "var(--accent)" }}>{fix.tier}</span>
+        <span className="diag-cat">
+          {isT1 && "low-risk · one-tap merge after CI green"}
+          {isT2 && "review diff · one-tap merge after CI green"}
+        </span>
+        <span className={"diag-cat-status " + (isApplying || isCiRunning ? "open" : "applied")} style={{ marginLeft: "auto" }}>
+          {isApplying ? "applying" : isCiRunning ? "ci-running" : fix.status}
+        </span>
+      </div>
+      <div className="diag-row">
+        <div className="diag-row-lbl">Why this tier</div>
+        <div className="diag-row-val">{fix.tier_rationale}</div>
+      </div>
+      {fix.proposed_rationale && (
+        <div className="diag-row">
+          <div className="diag-row-lbl">What the fix does</div>
+          <div className="diag-row-val">{fix.proposed_rationale}</div>
+        </div>
+      )}
+      {filesTouched.length > 0 && (
+        <div className="diag-row">
+          <div className="diag-row-lbl">Files touched ({filesTouched.length})</div>
+          <div className="diag-row-val" style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+            {filesTouched.slice(0, 5).map((f) => <div key={f}>{f}</div>)}
+            {filesTouched.length > 5 && <div style={{ color: "var(--ink-mute)" }}>+ {filesTouched.length - 5} more</div>}
+          </div>
+        </div>
+      )}
+      {fix.proposed_diff && (
+        <details style={{ marginTop: 8 }}>
+          <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--ink-soft)", padding: "4px 0" }}>Show diff ({diffLines} lines)</summary>
+          <pre style={{ background: "var(--bg-sunken)", padding: 12, borderRadius: 6, fontSize: 11, fontFamily: "ui-monospace, monospace", overflowX: "auto", maxHeight: 320, marginTop: 6, lineHeight: 1.4, whiteSpace: "pre" }}>{fix.proposed_diff}</pre>
+        </details>
+      )}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
+        {fix.pr_url && <a href={fix.pr_url} target="_blank" style={{ color: "var(--accent)", fontSize: 12 }}>PR #{fix.pr_number} →</a>}
+        {!isApplying && (isT1 || isT2) && (
+          <button className="login-btn"
+            style={{ width: "auto", padding: "9px 20px", fontSize: 13, background: isT1 ? "var(--green)" : "var(--accent)" }}
+            onClick={onApply}
+            disabled={applying}
+            title={isT1 ? "T1 — low-risk fix. Click to merge as soon as CI is green." : "T2 — review the diff above first, then click to merge after CI is green."}>
+            {applying ? "Merging…" : (isT1 ? "✓ Merge (CI-gated)" : "Apply (review + merge)")}
+          </button>
+        )}
+        {isApplying && <span style={{ fontSize: 12, color: "var(--accent)" }}>⏳ Merge queued · will land when CI green</span>}
+        <button className="settings-action" style={{ fontSize: 11, color: "var(--ink-mute)", padding: "4px 0" }} onClick={onPropose} disabled={proposing}>↻ Re-propose</button>
+      </div>
+    </div>
+  );
+}
+
+function DetailPane({ item, onReanalyze, reanalyzing, onResolve, resolving, showToast, onProposeFix, onApplyFix, proposing, applying }) {
+  if (!item) {
+    return (
+      <div className="detail">
+        <div className="empty empty-large">
+          <div className="empty-icon">🚩</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>Pick a report from the list</div>
+          <div style={{ marginTop: 8 }}>Or tap 🚩 on any SpaceSC surface to file a new one.</div>
+        </div>
+      </div>
+    );
+  }
+  const meta = TYPE_META[item.type] || { icon: "📝", label: item.type };
+  const ctx = safeParse(item.view_state_json);
+  const ctxLines = [];
+  if (ctx.url) ctxLines.push(["URL", ctx.url]);
+  if (ctx.title) ctxLines.push(["Page title", ctx.title]);
+  if (ctx.current_view) ctxLines.push(["View", ctx.current_view]);
+  if (ctx.currently_playing_module) ctxLines.push(["Playing module", ctx.currently_playing_module]);
+  if (ctx.current_series) ctxLines.push(["Series", ctx.current_series]);
+  if (ctx.gap_id) ctxLines.push(["Gap ID", ctx.gap_id]);
+  if (ctx.viewport) ctxLines.push(["Viewport", ctx.viewport.w + "×" + ctx.viewport.h]);
+  if (item.user_agent) ctxLines.push(["Agent", truncate(item.user_agent, 80)]);
+
+  return (
+    <div className="detail">
+      <div className="detail-h">
+        <span>{meta.icon}</span>
+        <span style={{ flex: 1 }}>{meta.label} on {item.surface}</span>
+        <StatusBadge status={item.status} />
+      </div>
+      <div className="detail-meta">
+        <span>Reported {timeAgo(item.captured_at)}</span>
+        <span>·</span>
+        <a href={item.surface} target="_self">Open the surface →</a>
+      </div>
+
+      <div className="section-h">Your words</div>
+      <div className="quote">{item.notes_text || item.voice_transcript || "(no notes)"}</div>
+
+      <div className="section-h">What you were looking at</div>
+      {ctxLines.length > 0 ? (
+        <div className="context-grid">
+          {ctxLines.map(([k, v], i) => (
+            <React.Fragment key={i}>
+              <div className="context-key">{k}</div>
+              <div className="context-val">{String(v)}</div>
+            </React.Fragment>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: "var(--ink-mute)" }}>(no view-state captured)</div>
+      )}
+
+      <div className="section-h">What the system learned</div>
+      <DiagnosisPanel blindspot={item.blindspot} onReanalyze={onReanalyze} reanalyzing={reanalyzing} />
+
+      <div className="section-h">Auto-fix</div>
+      <FixPanel
+        item={item}
+        onPropose={() => onProposeFix(item.id)}
+        onApply={() => onApplyFix(item.id)}
+        proposing={proposing}
+        applying={applying}
+      />
+
+      <div className="section-h">Timeline</div>
+      <Timeline item={item} />
+
+      <div className="section-h">Actions</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {item.status === "open" && (
+          <button className="settings-action" style={{ color: "var(--accent)" }} onClick={() => onResolve(item.id, "in_progress")} disabled={resolving}>
+            Mark in-progress
+          </button>
+        )}
+        {item.status !== "resolved" && (
+          <button className="settings-action" style={{ color: "var(--green)" }} onClick={() => {
+            const note = prompt("Resolution note (what was done):");
+            if (note) onResolve(item.id, "resolved", note);
+          }} disabled={resolving}>
+            Mark resolved
+          </button>
+        )}
+        {item.status !== "wontfix" && item.status !== "resolved" && (
+          <button className="settings-action" style={{ color: "var(--ink-mute)" }} onClick={() => {
+            const note = prompt("Won't-fix rationale:");
+            if (note) onResolve(item.id, "wontfix", note);
+          }} disabled={resolving}>
+            Mark won't fix
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PatternsView({ items }) {
+  // Group by missed_check / pattern_category from blindspots.
+  const groups = useMemo(() => {
+    const m = new Map();
+    for (const it of items) {
+      if (!it.blindspot) continue;
+      const k = (it.blindspot.missed_check || "new") + " · " + (it.blindspot.pattern_category || "—");
+      if (!m.has(k)) m.set(k, { key: k, missed: it.blindspot.missed_check, cat: it.blindspot.pattern_category, items: [] });
+      m.get(k).items.push(it);
+    }
+    return Array.from(m.values()).sort((a, b) => b.items.length - a.items.length);
+  }, [items]);
+  if (groups.length === 0) {
+    return <div className="empty"><div>No diagnoses yet. Once you've reported a few things, recurring patterns will show up here.</div></div>;
+  }
+  return (
+    <div className="patterns">
+      {groups.map((g) => (
+        <div key={g.key} className="pattern-card">
+          <div className="pattern-title">{g.missed || "new pattern"}</div>
+          <div className="pattern-meta">{g.cat || "uncategorized"}</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+            <span className="pattern-count">{g.items.length}</span>
+            <span style={{ fontSize: 11, color: "var(--ink-mute)" }}>report{g.items.length === 1 ? "" : "s"}</span>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--ink-mute)", marginTop: 8 }}>
+            Latest: {timeAgo(Math.max(...g.items.map((i) => i.captured_at)))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function App() {
+  const [authed, setAuthed] = useState(API.hasToken());
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [filter, setFilter] = useState("all");
+  const [activeId, setActiveId] = useState(null);
+  const [view, setView] = useState("list"); // 'list' | 'patterns'
+  const [toast, setToast] = useState(null);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [proposing, setProposing] = useState(false);
+  const [applying, setApplying] = useState(false);
+
+  const showToast = useCallback((msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3500);
+  }, []);
+  const bumpRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  useEffect(() => {
+    if (!authed) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    API.listFeedback(filter === "all" ? undefined : filter, 200)
+      .then((r) => { if (!cancelled) { setData(r.result || r); setLoading(false); } })
+      .catch((e) => {
+        if (cancelled) return;
+        if (e.code === "AUTH") { API.clearToken(); setAuthed(false); return; }
+        setError(e.message);
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [authed, filter, refreshKey]);
+
+  const handleReanalyze = useCallback(async () => {
+    if (!activeId) return;
+    setReanalyzing(true);
+    try {
+      const r = await API.reanalyze(activeId);
+      if (r.ok) { showToast("Diagnosis updated"); bumpRefresh(); }
+      else showToast("Re-analyze failed: " + (r.error || "unknown"));
+    } catch (e) {
+      showToast("Re-analyze failed: " + e.message);
+    } finally {
+      setReanalyzing(false);
+    }
+  }, [activeId, showToast, bumpRefresh]);
+
+  const handleResolve = useCallback(async (id, status, note) => {
+    setResolving(true);
+    try {
+      const r = await API.resolveFeedback(id, status, note);
+      if (r.ok) { showToast("Marked " + status.replace("_", " ")); bumpRefresh(); }
+      else showToast("Failed: " + (r.error || "unknown"));
+    } catch (e) {
+      showToast("Failed: " + e.message);
+    } finally {
+      setResolving(false);
+    }
+  }, [showToast, bumpRefresh]);
+
+  const handleProposeFix = useCallback(async (fbId) => {
+    setProposing(true);
+    try {
+      const r = await API.proposeFix(fbId);
+      if (r.ok) {
+        showToast(r.result && r.result.existing ? "Already in flight" : "Auto-fix dispatched · polling for status");
+        bumpRefresh();
+      } else {
+        showToast("Propose failed: " + (r.error || "unknown"));
+      }
+    } catch (e) { showToast("Propose failed: " + e.message); }
+    finally { setProposing(false); }
+  }, [showToast, bumpRefresh]);
+
+  const handleApplyFix = useCallback(async (fbId) => {
+    setApplying(true);
+    try {
+      const r = await API.applyFix(fbId);
+      if (r.ok) { showToast("Merging PR…"); bumpRefresh(); }
+      else showToast("Apply failed: " + (r.error || "unknown"));
+    } catch (e) { showToast("Apply failed: " + e.message); }
+    finally { setApplying(false); }
+  }, [showToast, bumpRefresh]);
+
+  // Auto-poll when there's an in-flight fix for the active item.
+  useEffect(() => {
+    if (!data) return;
+    const active = (data.items || []).find((i) => i.id === activeId);
+    const fix = active && active.fix;
+    if (!fix) return;
+    const inFlight = ["pending", "apply-requested", "proposing", "applying", "ci-running"].includes(fix.status);
+    if (!inFlight) return;
+    const t = setInterval(() => bumpRefresh(), 8_000);
+    return () => clearInterval(t);
+  }, [data, activeId, bumpRefresh]);
+
+  if (!authed) {
+    return (
+      <>
+        <NavMenu />
+        <LoginPage onTokenSet={() => setAuthed(true)} showToast={showToast} />
+        {toast && <div className="toast">{toast}</div>}
+      </>
+    );
+  }
+
+  const summary = (data && data.summary) || { total: 0, open: 0, in_progress: 0, resolved: 0, wontfix: 0, blindspots_open: 0 };
+  const items = (data && data.items) || [];
+  const active = items.find((i) => i.id === activeId) || null;
+
+  return (
+    <>
+      <NavMenu />
+      <div className="app">
+        <div className="topbar">
+          <div className="topbar-title">Reports</div>
+          <div className="topbar-sub">your 🚩 captures + what the system did with each one</div>
+          <button className="topbar-gear" onClick={bumpRefresh} aria-label="Refresh">↻</button>
+        </div>
+
+        <div className="summary">
+          <div className="summary-card"><div className="summary-num">{summary.total}</div><div className="summary-lbl">Total</div></div>
+          <div className="summary-card open"><div className="summary-num">{summary.open || 0}</div><div className="summary-lbl">Open</div></div>
+          <div className="summary-card"><div className="summary-num">{summary.in_progress || 0}</div><div className="summary-lbl">In progress</div></div>
+          <div className="summary-card resolved"><div className="summary-num">{summary.resolved || 0}</div><div className="summary-lbl">Resolved</div></div>
+          <div className="summary-card blindspots"><div className="summary-num">{summary.blindspots_open || 0}</div><div className="summary-lbl">Open diagnoses</div></div>
+        </div>
+
+        <div className="filter-row">
+          <button className={"filter-chip" + (view === "list" ? " active" : "")} onClick={() => setView("list")}>All reports</button>
+          <button className={"filter-chip" + (view === "patterns" ? " active" : "")} onClick={() => setView("patterns")}>Patterns</button>
+          {view === "list" && <span style={{ borderLeft: "0.5px solid var(--line)", margin: "0 6px" }}></span>}
+          {view === "list" && (
+            <>
+              <button className={"filter-chip" + (filter === "all" ? " active" : "")} onClick={() => setFilter("all")}>All<span className="filter-chip-count">{summary.total}</span></button>
+              <button className={"filter-chip" + (filter === "open" ? " active" : "")} onClick={() => setFilter("open")}>Open<span className="filter-chip-count">{summary.open || 0}</span></button>
+              <button className={"filter-chip" + (filter === "in_progress" ? " active" : "")} onClick={() => setFilter("in_progress")}>In progress<span className="filter-chip-count">{summary.in_progress || 0}</span></button>
+              <button className={"filter-chip" + (filter === "resolved" ? " active" : "")} onClick={() => setFilter("resolved")}>Resolved<span className="filter-chip-count">{summary.resolved || 0}</span></button>
+              <button className={"filter-chip" + (filter === "wontfix" ? " active" : "")} onClick={() => setFilter("wontfix")}>Won't fix<span className="filter-chip-count">{summary.wontfix || 0}</span></button>
+            </>
+          )}
+        </div>
+
+        {view === "patterns" ? (
+          loading ? <div className="empty"><div className="spinner"></div></div>
+            : error ? <div className="empty">⚠ {error}</div>
+            : <PatternsView items={items} />
+        ) : (
+          <div className="fb-grid">
+            <div className="fb-list">
+              {loading ? <div className="empty"><div className="spinner"></div></div>
+                : error ? <div className="empty">⚠ {error}</div>
+                : items.length === 0 ? (
+                  <div className="empty empty-large">
+                    <div className="empty-icon">🚩</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>No reports {filter === "all" ? "yet" : "in " + filter}</div>
+                    <div style={{ marginTop: 8 }}>Tap 🚩 on any SpaceSC surface to file one. Your words land here with an automatic diagnosis of what the system missed.</div>
+                  </div>
+                )
+                : items.map((it) => (
+                  <FeedbackRow key={it.id} item={it} active={it.id === activeId} onClick={() => setActiveId(it.id)} />
+                ))
+              }
+            </div>
+            <DetailPane
+              item={active}
+              onReanalyze={handleReanalyze}
+              reanalyzing={reanalyzing}
+              onResolve={handleResolve}
+              resolving={resolving}
+              showToast={showToast}
+              onProposeFix={handleProposeFix}
+              onApplyFix={handleApplyFix}
+              proposing={proposing}
+              applying={applying}
+            />
+          </div>
+        )}
+      </div>
+      {toast && <div className="toast">{toast}</div>}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
