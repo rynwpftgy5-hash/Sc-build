@@ -927,7 +927,7 @@ function TrackingBanner({ record, onPlayBrief, onOpenSeries, onDismiss }) {
 }
 
 // HOME
-function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue, onPlayArticle, onPickFromLibrary, onUntrack, onRetry, onPlayDailyBriefing, onRegenerateBriefing }) {
+function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue, onPlayArticle, onPickFromLibrary, onUntrack, onRetry, onPlayDailyBriefing, onRegenerateBriefing, onStartDrive }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gaps, setGaps] = useState([]);
@@ -1097,15 +1097,7 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
           </div>
           <div className="queue-line">~{queueMin} min total</div>
           <div className="queue-buttons">
-            <button className="queue-play" onClick={() => {
-              if (articles.length > 0) onPlayArticle(articles[0]);
-              else if (briefsReady.length > 0) {
-                const b = briefsReady[0];
-                onPlayBrief(b.moduleId, b.title, b.series, b.voiceId, b.gapId, b.position, b.totalPositions);
-              } else if (due.length > 0) {
-                onPlayDue(due[0]);
-              }
-            }}>▶ Start drive</button>
+            <button className="queue-play" onClick={() => onStartDrive && onStartDrive({ articles, briefsReady, due })}>▶ Start drive</button>
             <button className="queue-play" style={{ background: "transparent", color: "var(--bg-elev)", border: "0.5px solid rgba(255,255,255,0.3)" }} onClick={onPickFromLibrary}>
               📋 Pick from library
             </button>
@@ -2010,7 +2002,7 @@ function CaptureSheet({ kind, sourceInfo, onClose, onDone, showToast }) {
 }
 
 // PLAYER OVERLAY
-function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRefresh, onOpenSeries, onSwapAudio }) {
+function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRefresh, onOpenSeries, onSwapAudio, commuteQueue, commuteIdx, onSkipNext }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -2191,12 +2183,25 @@ function PlayerOverlay({ playing, audioRef, onClose, onEnded, showToast, bumpRef
       </div>
       <div className="player-body">
         <div className="player-meta">
+          {commuteQueue && commuteQueue.length > 0 && commuteIdx >= 0 && (
+            <div className="player-kind" style={{ color: "var(--accent)", fontWeight: 600 }}>
+              🚗 Drive · Track {commuteIdx + 1} of {commuteQueue.length}
+              {commuteIdx + 1 < commuteQueue.length && (
+                <span style={{ color: "var(--ink-mute)", fontWeight: 400, marginLeft: 6 }}>· {commuteQueue.length - commuteIdx - 1} more to play</span>
+              )}
+            </div>
+          )}
           {playing.position && playing.totalPositions && (
             <div className="player-kind">Episode {playing.position} of {playing.totalPositions}</div>
           )}
           <div className="player-title">{playing.title}</div>
           {playing.series && <div className="player-series">{playing.series}</div>}
           {playing.voiceId && <div className="player-voice">Read by {voiceName(playing.voiceId)}</div>}
+          {commuteQueue && commuteQueue.length > 0 && commuteIdx >= 0 && commuteIdx + 1 < commuteQueue.length && (
+            <button onClick={onSkipNext} className="play-btn-secondary" style={{ marginTop: 8, fontSize: 12, padding: "6px 12px" }}>
+              ⏭ Skip to next ({commuteQueue.length - commuteIdx - 1} left)
+            </button>
+          )}
         </div>
 
         <div className="scrubber-wrap">
@@ -2506,6 +2511,12 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [preparingAudio, setPreparingAudio] = useState(null); // {msg, sub}
   const [tracked, setTracked] = useState(() => trackingLoad());
+  // §commute-queue — the actual play queue for "Start drive". Each item is
+  // either a primed playingState or a function () => Promise<playingState>
+  // (articles need async cache-then-generate before they're playable).
+  // queueIdx points to currently-playing item. Auto-advance fires on onEnded.
+  const [commuteQueue, setCommuteQueue] = useState([]);
+  const [commuteIdx, setCommuteIdx] = useState(-1);
   // R6.1: expose audio metadata + transport handlers to the OS so iOS lock
   // screen / Control Center / AirPods double-tap drive the player. Without
   // this, lock-screen shows generic audio with no title and no skip controls.
@@ -2636,14 +2647,85 @@ function App() {
     if (blobUrlRef.current) { try { URL.revokeObjectURL(blobUrlRef.current); } catch (_) {} blobUrlRef.current = null; }
     setPlaying(null);
     setPlayerOpen(false);
+    // §commute-queue — stopping clears the queue so the user isn't surprised
+    // by next item starting after they stopped.
+    setCommuteQueue([]);
+    setCommuteIdx(-1);
+  }
+
+  // §commute-queue — build a play queue from everything the home screen lists
+  // and play items in sequence, full content each. onEnded calls
+  // advanceCommuteQueue which moves to the next item. Stops cleanly when done.
+  function startCommuteDrive({ articles, briefsReady, due }) {
+    const queue = [];
+    // Order: articles first (warm-up), then briefs (decisions), then due re-listens (deep)
+    for (const a of (articles || [])) queue.push({ kind: "article", article: a });
+    for (const b of (briefsReady || [])) queue.push({ kind: "brief", brief: b });
+    for (const d of (due || [])) queue.push({ kind: "due", item: d });
+    if (queue.length === 0) {
+      showToast && showToast("Nothing queued to play");
+      return;
+    }
+    setCommuteQueue(queue);
+    setCommuteIdx(0);
+    playCommuteIndex(queue, 0);
+  }
+
+  function playCommuteIndex(queue, idx) {
+    if (idx < 0 || idx >= queue.length) {
+      // End of queue
+      setCommuteQueue([]);
+      setCommuteIdx(-1);
+      showToast && showToast("Drive complete");
+      return;
+    }
+    const item = queue[idx];
+    const pos = ` (${idx + 1}/${queue.length})`;
+    if (item.kind === "article") {
+      // Async — playArticle handles its own state via playAudio internally.
+      playArticle(item.article, pos).catch((e) => {
+        console.error("commute-queue article failed:", e);
+        // Don't get stuck — skip to next
+        setCommuteIdx(idx + 1);
+        playCommuteIndex(queue, idx + 1);
+      });
+    } else if (item.kind === "brief") {
+      const b = item.brief;
+      playAudio({
+        kind: "brief", moduleId: b.moduleId, audioUrl: API.briefAudioUrl(b.moduleId),
+        title: b.title + pos, series: b.series, voiceId: b.voiceId,
+        gapId: b.gapId, position: b.position, totalPositions: b.totalPositions,
+        _commute: true,
+      });
+    } else if (item.kind === "due") {
+      const d = item.item;
+      playAudio({
+        kind: "module-due", moduleId: d.module_id, audioUrl: API.moduleAudioUrl(d.module_id),
+        title: truncate(d.learning_objective, 80) + pos, series: "Due for re-listen",
+        voiceId: null, isDue: true, _commute: true,
+      });
+    }
+  }
+
+  function advanceCommuteQueue() {
+    if (commuteIdx < 0 || commuteQueue.length === 0) return false;
+    const nextIdx = commuteIdx + 1;
+    if (nextIdx >= commuteQueue.length) {
+      setCommuteQueue([]);
+      setCommuteIdx(-1);
+      return false;
+    }
+    setCommuteIdx(nextIdx);
+    playCommuteIndex(commuteQueue, nextIdx);
+    return true;
   }
 
   // Article playback: cache-then-generate, then play blob URL.
-  async function playArticle(a) {
+  async function playArticle(a, posLabel) {
     const articleVoice = pickVoiceFor(a.page_id);
     const sourceLabel = a.source_newsletter || a.source_email ||
       (a.article_url ? new URL(a.article_url).hostname.replace(/^www\./, "") : "Article");
-    setPreparingAudio({ msg: "Preparing article audio…", sub: "Checking cache and generating if needed. ~10-30 seconds first time; instant after." });
+    setPreparingAudio({ msg: "Preparing article audio…" + (posLabel || ""), sub: "Checking cache and generating if needed. ~10-30 seconds first time; instant after." });
     try {
       // 1. Try cache first
       let blob = null;
@@ -2672,13 +2754,16 @@ function App() {
         moduleId: null,
         articleTitle: a.title,
         audioUrl: url,
-        title: truncate(a.title, 80),
+        title: truncate(a.title, 80) + (posLabel || ""),
         series: sourceLabel,
         voiceId: articleVoice,
+        _commute: !!posLabel,
       });
     } catch (e) {
       setPreparingAudio(null);
       showToast("Couldn't prepare article: " + e.message);
+      // §commute-queue — don't get stuck. If we're in a drive, advance past this item.
+      if (posLabel) advanceCommuteQueue();
     }
   }
 
@@ -2720,6 +2805,7 @@ function App() {
       })}
       onPlayArticle={playArticle}
       onPickFromLibrary={() => navToTab("library")}
+      onStartDrive={startCommuteDrive}
     />;
   } else if (view.name === "library") {
     viewEl = <LibraryScreen refreshKey={refreshKey}
@@ -2850,6 +2936,9 @@ function App() {
               title: playing.title,
             });
           }}
+          commuteQueue={commuteQueue}
+          commuteIdx={commuteIdx}
+          onSkipNext={advanceCommuteQueue}
           showToast={showToast} bumpRefresh={bumpRefresh} />
       )}
 
@@ -2872,6 +2961,13 @@ function App() {
               API.markArticleListened(playing.articleId)
                 .then(() => showToast("Article marked Listened"))
                 .catch(() => {});
+            }
+            if (playing.isDue && playing.moduleId) {
+              API.markListened(playing.moduleId).catch(() => {});
+            }
+            // §commute-queue — auto-advance through the queue if we're driving.
+            if (playing._commute) {
+              setTimeout(() => advanceCommuteQueue(), 500);
             }
           }}
           onError={() => {
