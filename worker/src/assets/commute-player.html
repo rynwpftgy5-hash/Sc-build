@@ -496,6 +496,10 @@ const API = {
   capturesToday: () => API._get("/api/uc3/captures-today"),
   flagClaim: (body) => API._post("/api/uc3/module-errata-create", body),
   approve: (mid) => API._post("/api/uc3/module-approve", { module_id: mid }, { timeout: 15000 }),
+  // §archive — dismiss module/series from the queue and stop generation
+  archiveModule: (mid) => API._post("/api/uc3/module-archive", { module_id: mid }, { timeout: 15000 }),
+  archiveSeries: (gid) => API._post("/api/uc3/series-archive", { gap_id: gid }, { timeout: 15000 }),
+  unarchive:     (mid) => API._post("/api/uc3/module-unarchive", { module_id: mid }, { timeout: 15000 }),
   retryModuleTts: (mid) => API._post("/api/uc3/module-tts", { module_id: mid, async: true }, { timeout: 15000 }),
   // §voice-fix-3: regenerate brief audio in the persisted rotation voice.
   // Brief gen is sync server-side (~30-60s); we kick it off and rely on the
@@ -791,15 +795,15 @@ function LoginPage({ onSaved, initialError }) {
 }
 
 // SERIES CARD (reused on home + library)
-function SeriesCard({ g, onClick }) {
+function SeriesCard({ g, onClick, onArchive }) {
   let badge, badgeText;
   if (g.pipeline_status === "running") { badge = "badge-busy"; badgeText = "generating"; }
   else if (g.approved_count === g.module_count && g.module_count > 0) { badge = "badge-ok"; badgeText = "all ready"; }
   else if (g.brief_audio_ready_count > 0) { badge = "badge-warn"; badgeText = `${g.brief_audio_ready_count} brief${g.brief_audio_ready_count === 1 ? "" : "s"} ready`; }
   else { badge = "badge-muted"; badgeText = g.pipeline_status || "captured"; }
   return (
-    <div className="card card-tap" onClick={onClick}>
-      <div className="row">
+    <div className="card">
+      <div className="row" onClick={onClick} style={{ cursor: "pointer" }}>
         <div className="row-main">
           <div className="row-title">{truncate(g.gap_title, 90)}</div>
           <div className="row-sub">
@@ -809,6 +813,15 @@ function SeriesCard({ g, onClick }) {
         </div>
         <span className={"badge " + badge}>{badgeText}</span>
       </div>
+      {onArchive && (
+        <div style={{ padding: "6px 14px 10px", borderTop: "0.5px solid var(--line)", display: "flex", justifyContent: "flex-end" }}>
+          <button className="play-btn-secondary" style={{ fontSize: 11, padding: "4px 10px", color: "var(--ink-mute)" }}
+            onClick={(e) => { e.stopPropagation(); onArchive(g.gap_id, g.gap_title); }}
+            title="Hide this whole series and stop all further generation on it">
+            🗄 Archive series
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -927,7 +940,7 @@ function TrackingBanner({ record, onPlayBrief, onOpenSeries, onDismiss }) {
 }
 
 // HOME
-function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue, onPlayArticle, onPickFromLibrary, onUntrack, onRetry, onPlayDailyBriefing, onRegenerateBriefing, onStartDrive }) {
+function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue, onPlayArticle, onPickFromLibrary, onUntrack, onRetry, onPlayDailyBriefing, onRegenerateBriefing, onStartDrive, onArchiveModule, onArchiveSeries }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gaps, setGaps] = useState([]);
@@ -1129,14 +1142,21 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
             <div className="section-meta">{briefsReady.length}</div>
           </div>
           {briefsReady.map((b) => (
-            <div key={b.moduleId} className="card card-tap" onClick={() => onPlayBrief(b.moduleId, b.title, b.series, b.voiceId, b.gapId, b.position, b.totalPositions)}>
-              <div className="row">
+            <div key={b.moduleId} className="card">
+              <div className="row" onClick={() => onPlayBrief(b.moduleId, b.title, b.series, b.voiceId, b.gapId, b.position, b.totalPositions)} style={{ cursor: "pointer" }}>
                 <div className="row-main">
                   <div className="row-title">{b.title}</div>
                   <div className="row-sub">{b.series} · Episode {b.position} of {b.totalPositions}</div>
                   <div className="row-meta">Brief · {b.durationSec ? fmtMin(b.durationSec) : "~5 min"} · Read by {voiceName(b.voiceId)}</div>
                 </div>
                 <button className="play-btn" aria-label={"Play brief: " + b.title}>▶ Brief</button>
+              </div>
+              <div style={{ padding: "6px 14px 10px", borderTop: "0.5px solid var(--line)", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button className="play-btn-secondary" style={{ fontSize: 11, padding: "4px 10px", color: "var(--ink-mute)" }}
+                  onClick={(e) => { e.stopPropagation(); onArchiveModule && onArchiveModule(b.moduleId, b.title); }}
+                  title="Hide this brief from your queue and stop further work on it">
+                  🗄 Archive
+                </button>
               </div>
             </div>
           ))}
@@ -1170,7 +1190,7 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
         <div className="section-meta">{gaps.length}</div>
       </div>
       {gaps.slice(0, 3).map((g) => (
-        <SeriesCard key={g.gap_id} g={g} onClick={() => onOpenSeries(g.gap_id, g.gap_title)} />
+        <SeriesCard key={g.gap_id} g={g} onClick={() => onOpenSeries(g.gap_id, g.gap_title)} onArchive={onArchiveSeries} />
       ))}
       {gaps.length > 3 && (
         <div style={{ textAlign: "center", marginTop: 10 }}>
@@ -1184,7 +1204,7 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
 }
 
 // LIBRARY (with Articles | Series subtabs)
-function LibraryScreen({ refreshKey, onOpenSeries, onPlayArticle, initialSubTab }) {
+function LibraryScreen({ refreshKey, onOpenSeries, onPlayArticle, initialSubTab, onArchiveSeries }) {
   const [subTab, setSubTab] = useState(initialSubTab || "articles");
   const [loading, setLoading] = useState(true);
   const [gaps, setGaps] = useState([]);
@@ -1275,7 +1295,7 @@ function LibraryScreen({ refreshKey, onOpenSeries, onPlayArticle, initialSubTab 
                 <div className="section-meta">{shownSeries.length}</div>
               </div>
               {shownSeries.map((g) => (
-                <SeriesCard key={g.gap_id} g={g} onClick={() => onOpenSeries(g.gap_id, g.gap_title)} />
+                <SeriesCard key={g.gap_id} g={g} onClick={() => onOpenSeries(g.gap_id, g.gap_title)} onArchive={onArchiveSeries} />
               ))}
               {legacy.length > 0 && (
                 <div style={{ marginTop: 18, textAlign: "center" }}>
@@ -2653,6 +2673,31 @@ function App() {
     setCommuteIdx(-1);
   }
 
+  // §archive — hide a module/series from the queue and stop further work on it
+  async function archiveModule(moduleId, title) {
+    try {
+      const r = await API.archiveModule(moduleId);
+      if (r.ok) {
+        showToast(`Archived "${truncate(title || ("module " + moduleId), 40)}" — no more work scheduled`);
+        bumpRefresh();
+      } else {
+        showToast("Couldn't archive: " + (r.error || "unknown"));
+      }
+    } catch (e) { showToast("Couldn't archive: " + e.message); }
+  }
+  async function archiveSeries(gapId, title) {
+    if (!confirm(`Archive the whole series "${truncate(title || gapId, 50)}"? All episodes will be hidden and no more work will run on them. (You can un-archive later.)`)) return;
+    try {
+      const r = await API.archiveSeries(gapId);
+      if (r.ok) {
+        showToast(`Archived series · ${(r.result && r.result.modules_archived) || 0} episodes hidden`);
+        bumpRefresh();
+      } else {
+        showToast("Couldn't archive series: " + (r.error || "unknown"));
+      }
+    } catch (e) { showToast("Couldn't archive series: " + e.message); }
+  }
+
   // §commute-queue — build a play queue from everything the home screen lists
   // and play items in sequence, full content each. onEnded calls
   // advanceCommuteQueue which moves to the next item. Stops cleanly when done.
@@ -2806,11 +2851,14 @@ function App() {
       onPlayArticle={playArticle}
       onPickFromLibrary={() => navToTab("library")}
       onStartDrive={startCommuteDrive}
+      onArchiveModule={archiveModule}
+      onArchiveSeries={archiveSeries}
     />;
   } else if (view.name === "library") {
     viewEl = <LibraryScreen refreshKey={refreshKey}
       onOpenSeries={(gapId, gapTitle) => navTo({ name: "series", gapId, gapTitle })}
       onPlayArticle={playArticle}
+      onArchiveSeries={archiveSeries}
       initialSubTab={view.subTab || "articles"} />;
   } else if (view.name === "captures") {
     viewEl = <CapturesScreen refreshKey={refreshKey}
