@@ -69,6 +69,9 @@ import {
 	handleUc3BriefAudio,
 	handleUc3ModuleFeedback,
 	handleUc3ModuleApprove,
+	handleUc3ModuleArchive,
+	handleUc3SeriesArchive,
+	handleUc3ModuleUnarchive,
 	handleUc3ModuleTts,
 	handleUc3ModuleAudio,
 	handleUc3ModuleErrataCreate,
@@ -2926,6 +2929,22 @@ export default {
 				const result = await handleUc3ModuleApprove(body, env, ctx);
 				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
 			}
+			// §archive — per-module + per-series archive (hides from queue, stops generation).
+			if (url.pathname === "/api/uc3/module-archive" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { module_id?: number };
+				const result = await handleUc3ModuleArchive(body, env);
+				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/uc3/series-archive" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { gap_id?: string };
+				const result = await handleUc3SeriesArchive(body, env);
+				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
+			}
+			if (url.pathname === "/api/uc3/module-unarchive" && request.method === "POST") {
+				const body = (await request.json().catch(() => ({}))) as { module_id?: number };
+				const result = await handleUc3ModuleUnarchive(body, env);
+				return jsonResponse(result.ok ? 200 : (result.status || 502), result);
+			}
 			// §8.4a.21 W8 — additional UC3 routes
 			if (url.pathname === "/api/uc3/module-tts" && request.method === "POST") {
 				const body = (await request.json().catch(() => ({}))) as { module_id?: number };
@@ -3091,11 +3110,75 @@ export default {
 		} else if (event.cron === "*/2 * * * *") {
 			ctx.waitUntil(drainFeedbackFixQueue(env));
 			ctx.waitUntil(selfMarkLive(env));
+			ctx.waitUntil(checkPipelineStalls(env));
 		} else {
 			console.warn(`scheduled: unknown cron expression "${event.cron}"`);
 		}
 	},
 };
+
+// §8.4a.25c — pipeline-stall detector. Surfaces gaps whose modules have been
+// in the same non-terminal status for > 24h as auto-captured "system reports"
+// in the ui_feedback table. The /feedback surface picks them up like any other
+// report; the user sees "we noticed this stalled, here's what we'd unstick."
+// Tracks a fingerprint so we don't re-create the same alert every 2 min.
+async function checkPipelineStalls(env: Env): Promise<void> {
+	try {
+		const nowSec = Math.floor(Date.now() / 1000);
+		const STALE_AGE_S = 24 * 3600;
+		// Find any gap whose modules have been stuck in researching/drafted/
+		// revision-requested for > 24h with no recent activity.
+		const stalled = await env.UC3_DB
+			.prepare(
+				`SELECT substr(gap_id,1,8) AS gap_short, status, COUNT(*) AS n, MAX(created_at) AS newest
+				 FROM learning_modules
+				 WHERE status IN ('researching','drafted','revision-requested')
+				   AND COALESCE(created_at, 0) < ?
+				 GROUP BY substr(gap_id,1,8), status
+				 HAVING n > 0
+				 ORDER BY newest ASC`,
+			)
+			.bind(nowSec - STALE_AGE_S)
+			.all<{ gap_short: string; status: string; n: number; newest: number }>();
+		const rows = stalled.results ?? [];
+		if (rows.length === 0) return;
+		// Aggregate to one alert per gap (multiple statuses combine)
+		const byGap = new Map<string, { statuses: string[]; total: number; oldest: number }>();
+		for (const r of rows) {
+			const e = byGap.get(r.gap_short) ?? { statuses: [], total: 0, oldest: r.newest };
+			e.statuses.push(`${r.n}× ${r.status}`);
+			e.total += r.n;
+			e.oldest = Math.min(e.oldest, r.newest);
+			byGap.set(r.gap_short, e);
+		}
+		for (const [gap, info] of byGap.entries()) {
+			const fingerprint = `pipeline-stall:${gap}`;
+			// Dedup: skip if we already filed this within last 24h
+			const existing = await env.UC3_DB
+				.prepare(
+					`SELECT id FROM ui_feedback
+					 WHERE surface = ? AND notes_text LIKE ?
+					 AND captured_at > ?
+					 LIMIT 1`,
+				)
+				.bind("/pipeline", `%${fingerprint}%`, nowSec - 24 * 3600)
+				.first();
+			if (existing) continue;
+			const ageHours = Math.round((nowSec - info.oldest) / 3600);
+			const note = `[${fingerprint}] Learning series ${gap} has ${info.total} modules stalled for ~${ageHours} hours (${info.statuses.join(", ")}). The pipeline workflow likely errored mid-run and needs a manual restart via /api/uc3/pipeline-run for drafted/researching gaps, or /api/uc3/module-revise for each revision-requested module.`;
+			await env.UC3_DB
+				.prepare(
+					`INSERT INTO ui_feedback (surface, view_state_json, type, notes_text, captured_at, status, user_agent)
+					 VALUES (?, ?, 'bug', ?, ?, 'open', 'system-stall-detector/1.0')`,
+				)
+				.bind("/pipeline", JSON.stringify({ gap_short: gap, statuses: info.statuses, age_hours: ageHours, auto_captured: true }), note, nowSec)
+				.run();
+			console.log(`checkPipelineStalls: filed stall alert for gap ${gap} (${info.total} modules, ${ageHours}h)`);
+		}
+	} catch (err) {
+		console.error("checkPipelineStalls failed:", (err as Error).message);
+	}
+}
 
 // §8.4a.25c F15 — self-mark live: every Worker boot (= every deploy) we flip
 // any "merged but not yet live" rows to live. The /2-min cron tick calls this

@@ -51,7 +51,7 @@ export async function listDueRows(db: D1Database, now: number = Math.floor(Date.
 			        lm.gap_id, lm.position_in_series AS position, lm.learning_objective, lm.audio_r2_key
 			 FROM spaced_rep_schedule s
 			 JOIN learning_modules lm ON s.module_id = lm.id
-			 WHERE s.fired = 0 AND s.due_at <= ?
+			 WHERE s.fired = 0 AND s.due_at <= ? AND lm.status != 'archived'
 			 ORDER BY s.due_at ASC`,
 		)
 		.bind(now)

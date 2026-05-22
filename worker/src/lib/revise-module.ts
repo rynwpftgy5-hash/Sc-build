@@ -3,7 +3,7 @@
 // failed claims + S7 rationale, then re-runs S6 verify + S7 judge to confirm
 // the fix landed.
 
-import { callAnthropic, extractJson, sha256Hex, type AnthropicModel } from "./anthropic";
+import { callAnthropic, callAnthropicStreaming, extractJson, sha256Hex, type AnthropicModel } from "./anthropic";
 import {
 	listCitationsByModule,
 	listClaimsByModule,
@@ -13,6 +13,7 @@ import {
 	flagClaimForHumanReview,
 	insertVerificationPass,
 	logVerification,
+	setModuleStatus,
 } from "./d1-uc3";
 import { putTranscript, getTranscript } from "./r2-transcripts";
 
@@ -54,6 +55,7 @@ export interface ReviseModuleResult {
 		s7_rationale: string;
 		changes_made: number;
 		claims_dropped: number;
+		new_status?: string | null;
 	};
 }
 
@@ -68,10 +70,14 @@ function fillTemplate(tpl: string, vars: Record<string, string | number | null |
 export async function reviseModule(env: ReviseModuleEnv, module_id: number): Promise<ReviseModuleResult> {
 	// 1. Load context: module + transcript + claims + S7 rationale + citations
 	const modRow = await env.UC3_DB
-		.prepare("SELECT id, position_in_series, learning_objective FROM learning_modules WHERE id = ?")
+		.prepare("SELECT id, position_in_series, learning_objective, status FROM learning_modules WHERE id = ?")
 		.bind(module_id)
-		.first<{ id: number; position_in_series: number; learning_objective: string }>();
+		.first<{ id: number; position_in_series: number; learning_objective: string; status: string }>();
 	if (!modRow) return { ok: false, module_id, revised: false, error: `module ${module_id} not found`, pre_revision: { failed_claim_count: 0 } };
+	// §archive — refuse to spend LLM/TTS budget on archived modules
+	if (modRow.status === "archived") {
+		return { ok: false, module_id, revised: false, error: "module is archived; un-archive first", pre_revision: { failed_claim_count: 0 } };
+	}
 
 	const transcript = await getTranscript(env.TTS_CACHE, module_id);
 	if (!transcript) return { ok: false, module_id, revised: false, error: "no transcript in R2", pre_revision: { failed_claim_count: 0 } };
@@ -111,12 +117,15 @@ export async function reviseModule(env: ReviseModuleEnv, module_id: number): Pro
 		CITATIONS_JSON: JSON.stringify(citations.map((c) => ({ name: c.source_name, url: c.source_url }))),
 	});
 	const revisePromptHash = await sha256Hex(revisePrompt);
-	const r = await callAnthropic({
+	// F16 fix — use streaming for the long revise generation. Non-streaming
+	// hit CF's 524 gateway timeout at ~256s for satcom modules. Streaming
+	// keeps the connection alive via SSE chunks while Sonnet generates.
+	const r = await callAnthropicStreaming({
 		apiKey: env.ANTHROPIC_API_KEY,
 		model: MODEL_REVISE,
 		user: revisePrompt,
 		maxTokens: 8192,
-		timeoutMs: 240_000, // revise generates up to 8K tokens; 120s default too tight
+		timeoutMs: 600_000, // 10 min ceiling for streaming
 	});
 	if (!r.ok || !r.text) {
 		await logVerification(env.UC3_DB, {
@@ -338,6 +347,18 @@ export async function reviseModule(env: ReviseModuleEnv, module_id: number): Pro
 		rationale: postS7Rationale,
 	});
 
+	// §revise-promote-fix (task #29) — if the post-revise pass cleared S7
+	// AND has minimal remaining claim failures, promote the module to
+	// review-brief-pending so the customer's UI reflects the fix. Without
+	// this, modules sit at revision-requested even when S7 said approved.
+	// Bar is conservative: require S7 approved AND <=2 remaining S6 failures
+	// (matches the mod 83 W9 promotion bar).
+	let statusUpdate: string | null = null;
+	if (postS7Verdict === "approved" && postFailed <= 2) {
+		await setModuleStatus(env.UC3_DB, module_id, "review-brief-pending");
+		statusUpdate = "review-brief-pending";
+	}
+
 	return {
 		ok: true,
 		module_id,
@@ -350,6 +371,7 @@ export async function reviseModule(env: ReviseModuleEnv, module_id: number): Pro
 			s7_rationale: postS7Rationale,
 			changes_made: parsed.changes_made?.length ?? 0,
 			claims_dropped: parsed.claims_dropped ?? 0,
+			new_status: statusUpdate,
 		},
 	};
 }

@@ -198,6 +198,14 @@ export async function generateBriefAudio(env: ReviewBriefEnv, module_id: number)
 }
 
 export async function generateBrief(env: ReviewBriefEnv, module_id: number): Promise<{ ok: boolean; module_id: number; script?: BriefScriptResult; audio?: BriefAudioResult; error?: string }> {
+	// §archive — refuse to spend LLM/TTS budget on archived modules
+	const statusRow = await env.UC3_DB
+		.prepare("SELECT status FROM learning_modules WHERE id = ?")
+		.bind(module_id)
+		.first<{ status: string }>();
+	if (statusRow?.status === "archived") {
+		return { ok: false, module_id, error: "module is archived; un-archive first to regenerate brief" };
+	}
 	const script = await generateBriefScript(env, module_id);
 	if (!script.ok) return { ok: false, module_id, script, error: script.error };
 	const audio = await generateBriefAudio(env, module_id);

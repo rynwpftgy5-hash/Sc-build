@@ -29,6 +29,14 @@ export interface ModuleAudioResult {
 }
 
 export async function generateModuleAudio(env: ModuleAudioEnv, module_id: number): Promise<ModuleAudioResult> {
+	// §archive — refuse to spend TTS budget on archived modules
+	const statusRow = await env.UC3_DB
+		.prepare("SELECT status FROM learning_modules WHERE id = ?")
+		.bind(module_id)
+		.first<{ status: string }>();
+	if (statusRow?.status === "archived") {
+		return { ok: false, module_id, error: "module is archived; un-archive first to regenerate audio" };
+	}
 	// D1 (audio failure surface): stamp attempt counter + timestamp at start so
 	// the UI can show "attempted N times" mid-cook, not just on terminal failure.
 	const nowS = Math.floor(Date.now() / 1000);

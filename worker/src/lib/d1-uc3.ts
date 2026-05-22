@@ -11,7 +11,8 @@ export type ModuleStatus =
 	| "review-brief-sent"
 	| "revision-requested"
 	| "approved"
-	| "published";
+	| "published"
+	| "archived";
 
 export interface LearningModuleRow {
 	id: number;

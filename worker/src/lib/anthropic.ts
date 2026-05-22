@@ -93,6 +93,95 @@ export async function callAnthropic(input: AnthropicCallInput): Promise<Anthropi
 	return second;
 }
 
+// F16 fix — streaming variant. Long Sonnet generations (>100s) hit Cloudflare's
+// 524 gateway timeout when non-streaming because no bytes flow until completion.
+// Streaming sends SSE chunks as the model generates, so the connection stays
+// alive indefinitely. Assembles all text deltas into a single result matching
+// callAnthropic's return shape.
+async function doAnthropicStream(input: AnthropicCallInput): Promise<AnthropicCallResult> {
+	const controller = new AbortController();
+	// Long ceiling (15 min) — streaming sends data continuously; the only
+	// time this fires is if the connection truly dies.
+	const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 15 * 60_000);
+	const reqBody: Record<string, unknown> = {
+		model: input.model,
+		max_tokens: Math.max(1, Math.min(input.maxTokens ?? DEFAULT_MAX_TOKENS, 8192)),
+		messages: [{ role: "user", content: input.user }],
+		stream: true,
+	};
+	if (input.system && input.system.trim()) reqBody.system = input.system;
+	try {
+		const resp = await fetch("https://api.anthropic.com/v1/messages", {
+			method: "POST",
+			headers: {
+				"x-api-key": input.apiKey,
+				"anthropic-version": "2023-06-01",
+				"content-type": "application/json",
+				"accept": "text/event-stream",
+			},
+			body: JSON.stringify(reqBody),
+			signal: controller.signal,
+		});
+		if (!resp.ok) {
+			const txt = await resp.text();
+			return { ok: false, status: resp.status, error: `Anthropic ${resp.status}: ${txt.slice(0, 400)}` };
+		}
+		if (!resp.body) {
+			return { ok: false, status: 502, error: "Anthropic streaming response had no body" };
+		}
+		// Parse SSE. Each event has "event: <name>\ndata: <json>\n\n"
+		// We collect text_delta chunks + usage from message_start/message_delta.
+		const reader = resp.body.getReader();
+		const decoder = new TextDecoder();
+		let buffer = "";
+		const chunks: string[] = [];
+		let usage: { input_tokens?: number; output_tokens?: number } = {};
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			buffer += decoder.decode(value, { stream: true });
+			let blankIdx;
+			while ((blankIdx = buffer.indexOf("\n\n")) >= 0) {
+				const event = buffer.slice(0, blankIdx);
+				buffer = buffer.slice(blankIdx + 2);
+				const dataLine = event.split("\n").find((l) => l.startsWith("data: "));
+				if (!dataLine) continue;
+				try {
+					const parsed = JSON.parse(dataLine.slice(6));
+					if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
+						chunks.push(parsed.delta.text || "");
+					} else if (parsed.type === "message_delta" && parsed.usage) {
+						usage = { ...usage, ...parsed.usage };
+					} else if (parsed.type === "message_start" && parsed.message?.usage) {
+						usage = { ...usage, ...parsed.message.usage };
+					}
+				} catch (_) { /* skip malformed events */ }
+			}
+		}
+		return { ok: true, status: 200, text: chunks.join(""), usage };
+	} catch (err) {
+		const e = err as Error;
+		if (e.name === "AbortError") {
+			return { ok: false, status: 504, error: `Anthropic streaming aborted after ${(input.timeoutMs ?? 15 * 60_000) / 1000}s` };
+		}
+		return { ok: false, status: 502, error: `Anthropic streaming error: ${e.message}` };
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+// F16 — streaming variant of callAnthropic. Use for long generations.
+export async function callAnthropicStreaming(input: AnthropicCallInput): Promise<AnthropicCallResult> {
+	const first = await doAnthropicStream(input);
+	if (first.ok || !first.status || !RETRYABLE_STATUSES.has(first.status)) return first;
+	await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS));
+	const second = await doAnthropicStream(input);
+	if (!second.ok && second.error) {
+		second.error = `[stream retry after ${first.status}] ${second.error}`;
+	}
+	return second;
+}
+
 export function extractJson<T = unknown>(text: string): T | null {
 	const trimmed = text.trim();
 	const start = trimmed.indexOf("{");

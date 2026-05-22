@@ -347,6 +347,7 @@ export async function handleUc3ListGaps(
 				        (SELECT COUNT(*) FROM review_briefs rb JOIN learning_modules lm2 ON rb.module_id = lm2.id WHERE lm2.gap_id = lm.gap_id AND rb.audio_r2_key IS NOT NULL) AS brief_audio_ready_count
 				 FROM learning_modules lm
 				 GROUP BY lm.gap_id
+				 HAVING SUM(CASE WHEN lm.status != 'archived' THEN 1 ELSE 0 END) > 0
 				 ORDER BY MAX(lm.created_at) DESC`,
 			)
 			.all<{
@@ -704,6 +705,7 @@ export async function handleUc3ListBriefsReady(
 				 JOIN review_briefs rb ON rb.module_id = lm.id
 				 WHERE rb.audio_r2_key IS NOT NULL
 				   AND lm.status != 'approved'
+				   AND lm.status != 'archived'
 				 ORDER BY lm.created_at DESC
 				 LIMIT 12`,
 			)
@@ -1035,4 +1037,102 @@ export async function handleUc3PipelineStatus(
 	}
 
 	return result;
+}
+
+// §archive — push modules out of the commute queue + stop further generation.
+// Idempotent: archiving already-archived module is a no-op. Cancels any in-flight
+// pipeline by setting status='archived' so workflow steps + cron drains skip it.
+export async function handleUc3ModuleArchive(
+	body: { module_id?: number },
+	env: Uc3HandlerEnv,
+): Promise<{ ok: boolean; status?: number; result?: unknown; error?: string }> {
+	if (typeof body?.module_id !== "number") {
+		return { ok: false, status: 400, error: "field 'module_id' (number) required" };
+	}
+	try {
+		const now = Math.floor(Date.now() / 1000);
+		const r = await env.UC3_DB
+			.prepare("UPDATE learning_modules SET status='archived', approved_at = COALESCE(approved_at, ?) WHERE id = ?")
+			.bind(now, body.module_id)
+			.run();
+		const changes = (r.meta as { changes?: number }).changes ?? 0;
+		if (changes === 0) {
+			return { ok: false, status: 404, error: `module ${body.module_id} not found` };
+		}
+		await env.UC3_DB
+			.prepare(
+				`INSERT INTO verification_trail (module_id, stage, response_json, ok, decided_at)
+				 VALUES (?, 'archive', ?, 1, ?)`,
+			)
+			.bind(body.module_id, JSON.stringify({ source: "user-archive" }), now)
+			.run();
+		return { ok: true, status: 200, result: { module_id: body.module_id, new_status: "archived" } };
+	} catch (err) {
+		return { ok: false, status: 502, error: `archive failed: ${(err as Error).message}` };
+	}
+}
+
+// §archive — archive every module in a gap (series-level dismiss).
+export async function handleUc3SeriesArchive(
+	body: { gap_id?: string },
+	env: Uc3HandlerEnv,
+): Promise<{ ok: boolean; status?: number; result?: unknown; error?: string }> {
+	if (typeof body?.gap_id !== "string" || !body.gap_id) {
+		return { ok: false, status: 400, error: "field 'gap_id' (string) required" };
+	}
+	try {
+		const now = Math.floor(Date.now() / 1000);
+		const r = await env.UC3_DB
+			.prepare(
+				`UPDATE learning_modules SET status='archived', approved_at = COALESCE(approved_at, ?)
+				 WHERE gap_id = ? AND status != 'archived'`,
+			)
+			.bind(now, body.gap_id)
+			.run();
+		const changes = (r.meta as { changes?: number }).changes ?? 0;
+		// Best-effort: cancel any running pipeline workflow for this gap so it
+		// stops burning S5/S6/S7 LLM calls.
+		try {
+			const ps = await env.UC3_DB
+				.prepare("SELECT workflow_instance_id FROM pipeline_state WHERE gap_id = ?")
+				.bind(body.gap_id)
+				.first<{ workflow_instance_id: string | null }>();
+			if (ps?.workflow_instance_id) {
+				const instance = await env.UC3_PIPELINE.get(ps.workflow_instance_id);
+				await instance.terminate().catch(() => {});
+				await env.UC3_DB
+					.prepare("UPDATE pipeline_state SET status='cancelled', updated_at = ? WHERE gap_id = ?")
+					.bind(now, body.gap_id)
+					.run();
+			}
+		} catch (_) {
+			// Non-fatal: workflow may already be terminal
+		}
+		return { ok: true, status: 200, result: { gap_id: body.gap_id, modules_archived: changes } };
+	} catch (err) {
+		return { ok: false, status: 502, error: `series-archive failed: ${(err as Error).message}` };
+	}
+}
+
+// §archive — un-archive a module (back to revision-requested as a safe restart).
+export async function handleUc3ModuleUnarchive(
+	body: { module_id?: number },
+	env: Uc3HandlerEnv,
+): Promise<{ ok: boolean; status?: number; result?: unknown; error?: string }> {
+	if (typeof body?.module_id !== "number") {
+		return { ok: false, status: 400, error: "field 'module_id' (number) required" };
+	}
+	try {
+		const r = await env.UC3_DB
+			.prepare("UPDATE learning_modules SET status='revision-requested' WHERE id = ? AND status='archived'")
+			.bind(body.module_id)
+			.run();
+		const changes = (r.meta as { changes?: number }).changes ?? 0;
+		if (changes === 0) {
+			return { ok: false, status: 404, error: `module ${body.module_id} not found or not archived` };
+		}
+		return { ok: true, status: 200, result: { module_id: body.module_id, new_status: "revision-requested" } };
+	} catch (err) {
+		return { ok: false, status: 502, error: `unarchive failed: ${(err as Error).message}` };
+	}
 }
