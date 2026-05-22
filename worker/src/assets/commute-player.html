@@ -566,11 +566,22 @@ const VOICE_NAMES = {
 };
 const VOICE_IDS = Object.keys(VOICE_NAMES);
 const voiceName = (id) => VOICE_NAMES[id] || (id ? id.slice(0, 6) : "—");
-// Pick a deterministic rotation voice from a stable string key (e.g. page_id)
+// Pick a deterministic rotation voice from a stable string key (e.g. page_id).
+// Used for content that has no position concept (articles).
 const pickVoiceFor = (key) => {
   let h = 0;
   for (let i = 0; i < (key || "").length; i++) h = ((h << 5) - h + key.charCodeAt(i)) | 0;
   return VOICE_IDS[Math.abs(h) % VOICE_IDS.length];
+};
+// F14 fix: mirror server-side pickVoiceForPosition (worker/src/lib/voice-rotation.ts)
+// exactly so display labels match the audio actually rendered for that position.
+// Previously the module card fell back to the hash-based pickVoiceFor on the
+// stringified position, which diverges from the server (e.g. position 4 hashed
+// to Adam but server uses Bella) — the user then saw "Read by Adam" on a card
+// whose audio is Bella's voice.
+const pickVoiceIdForPosition = (position) => {
+  const p = position && position > 0 ? position : 1;
+  return VOICE_IDS[(p - 1) % VOICE_IDS.length];
 };
 
 const fmtTime = (s) => {
@@ -1323,7 +1334,7 @@ function ModuleCard({ m, totalPositions, onPlayBrief, onPlayModule, onRegenerate
   // then position-based rotation pick if neither is set.
   const voiceId = m.voice_id
     || (m.review_brief && m.review_brief.voice_id)
-    || pickVoiceFor(String(m.position || 0));
+    || pickVoiceIdForPosition(m.position);
   const briefVoiceId = m.review_brief && m.review_brief.voice_id;
   // Flag a divergence so the user can see when brief audio was generated in
   // a different voice than the module's current voice_id. Happens for
