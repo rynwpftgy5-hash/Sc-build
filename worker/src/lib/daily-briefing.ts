@@ -14,11 +14,11 @@
 
 import { callAnthropic, type AnthropicModel } from "./anthropic";
 import { ttsChunkedToBuffer, ELEVENLABS_DEFAULT_MODEL } from "./tts";
+import { pickVoiceForDailyBriefing } from "./voice-rotation";
 
 // Notion DB ID for the ingestion log (each row is a single ingest attempt).
 const INGESTION_LOG_DB_ID = "d7494f8b-3768-4ea0-b314-dbaf1a162f93";
 
-const DEFAULT_VOICE_FALLBACK = "ErXwobaYiN019PkySvjV"; // Antoni
 const SONNET_MODEL: AnthropicModel = "claude-sonnet-4-6";
 const TARGET_MAX_TOKENS = 1500; // ~5-min script at 150 wpm ≈ 750 words ≈ 1000 tokens
 
@@ -227,7 +227,12 @@ export async function generateDailyBriefing(env: DailyBriefingEnv): Promise<Dail
 		}
 
 		// 4. TTS via ElevenLabs (chunked to handle ~5min payloads).
-		const voice_id = env.ELEVENLABS_DEFAULT_VOICE_ID || DEFAULT_VOICE_FALLBACK;
+		// Rotate the voice across briefing_date so the daily brief doesn't
+		// always sound like Antoni (feedback #27). env.ELEVENLABS_DEFAULT_VOICE_ID
+		// remains an explicit override for emergency single-voice fallback.
+		const voice_id = env.ELEVENLABS_DEFAULT_VOICE_ID && env.ELEVENLABS_DEFAULT_VOICE_ID.trim()
+			? env.ELEVENLABS_DEFAULT_VOICE_ID.trim()
+			: pickVoiceForDailyBriefing(briefing_date).voice_id;
 		const tts = await ttsChunkedToBuffer(script, voice_id, ELEVENLABS_DEFAULT_MODEL, undefined, env.ELEVENLABS_API_KEY);
 		if (!tts.ok) {
 			console.warn(`daily-briefing TTS failure: ${tts.error}`);
