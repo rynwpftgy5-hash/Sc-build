@@ -619,16 +619,18 @@ export async function handleUc3TodayBriefing(
 // ctx.waitUntil to fire-and-forget so the HTTP request returns immediately.
 // Default is synchronous — useful for ad-hoc debugging from the desk.
 export async function handleUc3DailyBriefingGenerate(
-	body: { async?: boolean },
+	body: { async?: boolean; force?: boolean },
 	env: Uc3HandlerEnv,
 	ctx?: ExecutionContext,
 ): Promise<{ ok: boolean; status?: number; result?: unknown; error?: string }> {
+	// W1-C2: force=true bypasses the zero-material skip (manual "generate anyway").
+	const opts = { force: body?.force === true };
 	if (body?.async === true) {
 		if (!ctx) {
 			// Without ctx we can't fire-and-forget safely; fall back to sync.
 		} else {
 			ctx.waitUntil(
-				generateDailyBriefing(env).catch((err) => {
+				generateDailyBriefing(env, opts).catch((err) => {
 					console.error("daily-briefing manual-async crashed:", (err as Error).message);
 				}),
 			);
@@ -636,10 +638,61 @@ export async function handleUc3DailyBriefingGenerate(
 		}
 	}
 	try {
-		const r = await generateDailyBriefing(env);
+		const r = await generateDailyBriefing(env, opts);
 		return { ok: r.ok, status: r.ok ? 200 : 502, result: r };
 	} catch (err) {
 		return { ok: false, status: 502, error: `daily-briefing generate failed: ${(err as Error).message}` };
+	}
+}
+
+// W1-C2 (RESTART-2026-09) — GET /api/uc3/elevenlabs-quota
+// Reads the ElevenLabs subscription so the player's home screen can show a
+// voice-budget banner before the daily cron burns the month's characters.
+// `warn` flips at 80% used. No caching: one small GET per home-screen load.
+export async function handleUc3ElevenLabsQuota(
+	_url: URL,
+	env: Uc3HandlerEnv,
+): Promise<{ ok: boolean; status?: number; result?: unknown; error?: string }> {
+	if (!env.ELEVENLABS_API_KEY) {
+		return { ok: false, status: 500, error: "server misconfigured: ELEVENLABS_API_KEY secret missing" };
+	}
+	try {
+		const resp = await fetch("https://api.elevenlabs.io/v1/user/subscription", {
+			headers: { "xi-api-key": env.ELEVENLABS_API_KEY },
+			signal: AbortSignal.timeout(10_000),
+		});
+		if (!resp.ok) {
+			const detail = (await resp.text().catch(() => "")).slice(0, 300);
+			return { ok: false, status: 502, error: `ElevenLabs subscription ${resp.status}: ${detail}` };
+		}
+		const j = (await resp.json()) as {
+			tier?: string;
+			status?: string;
+			character_count?: number;
+			character_limit?: number;
+			next_character_count_reset_unix?: number;
+		};
+		const character_count = j.character_count ?? 0;
+		const character_limit = j.character_limit ?? 0;
+		const characters_remaining = Math.max(0, character_limit - character_count);
+		const used_pct = character_limit > 0 ? Math.round((character_count / character_limit) * 100) : null;
+		return {
+			ok: true,
+			status: 200,
+			result: {
+				tier: j.tier ?? null,
+				status: j.status ?? null,
+				character_count,
+				character_limit,
+				characters_remaining,
+				used_pct,
+				next_reset_unix: j.next_character_count_reset_unix ?? null,
+				warn: used_pct !== null && used_pct >= 80,
+				checked_at: Math.floor(Date.now() / 1000),
+			},
+		};
+	} catch (err) {
+		return { ok: false, status: 502, error: `elevenlabs-quota failed: ${(err as Error).message}` };
 	}
 }
 
