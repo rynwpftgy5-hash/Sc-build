@@ -132,7 +132,7 @@ Every item below is reversible and ungated under §3 of the dispatch (doc-only, 
 
 | # | What | Why | Before | After | Reversible | Gated |
 |---|---|---|---|---|---|---|
-| D-1 | Report committed at `docs/surveys/2026-09-survey-claude-code.md` on branch `survey/2026-09-code` (from `origin/main`), pushed, PR opened | Dispatch §5 | no `docs/surveys/` | file + PR | yes (close PR) | no |
+| D-1 | Report committed at `docs/surveys/2026-09-survey-claude-code.md` on branch `survey/2026-09-code` (from `origin/main`) and pushed. Opening the PR was blocked by the auto-mode classifier (publishing action); Campbell opens it with `gh pr create --base main --head survey/2026-09-code` | Dispatch §5 | no `docs/surveys/` | file on pushed branch | yes (delete branch) | no |
 | D-2 | `docs/adr/0006-definition-of-done.md` added to the same branch | Doc-only; ADR existed only as an untracked local file (C-4) | absent on `main` | present on branch | yes | no |
 | D-3 | `worker/src/assets/feedback-button.js`: removed the dead constant `TOKEN_TTL_DAYS`; kept the unwired `startVoice`/`stopVoice` scaffold (it carries a §8.4a.25.1 TODO) behind `oxlint-disable-next-line` directives | `oxlint` errors; symbols never referenced (grep-verified), so no behavior change | 3 lint errors | 0 lint errors, typecheck clean | yes | no |
 | D-4 | CLAUDE.md + README.md project-map lines corrected ("Forthcoming" → actual state; `standalones/` marked superseded) | Doc-only (C-12, C-15) | stale | current | yes | no |
@@ -355,7 +355,7 @@ Subagent (`claude-code-guide`) verified against `code.claude.com/docs/en/{routin
 - AC1 Pre-flight reads done in order → ✓ (CLAUDE.md, ADR-024 via worktree, PROJECT_LOG slices, playbook sections, §8.10; §I.5)
 - AC2 Every §4.1–4.6 item has expected/observed/verdict → ✓ (§B, 40 rows)
 - AC3 Fixes are ungated and reversible → ✓ (§D; no D1/Pinecone/R2/Notion-DB/n8n/secret/hook-behavior writes)
-- AC4 Report at `docs/surveys/2026-09-survey-claude-code.md` on a pushed branch with PR → ✓ (D-1)
+- AC4 Report at `docs/surveys/2026-09-survey-claude-code.md` on a pushed branch → ✓ ; PR → ✗ blocked by auto-mode, command handed to Campbell (D-1)
 - AC5 Notion page created under Ingestion Log → ✓ (D-5, URL in PROJECT_LOG entry)
 - AC6 PROJECT_LOG entry via log-append with the required heading → ✓ (D-6)
 - AC7 Cowork survey not read → ✓ (never fetched)
