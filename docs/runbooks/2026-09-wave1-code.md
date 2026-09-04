@@ -40,7 +40,7 @@ Evidence pull (read-only), run with `N8N_API_KEY` exported:
 bash <scratchpad>/n8n-dump.sh
 ```
 
-Dumps workflow JSON for `BNBjoqXtPylHcMjs`, `CkFleWzrsKzXL5kh`, `9QKgeDSw4UXLZNcH`, `iqiNBClTdbfWCcB1`, `8sHd4N0YPG25ug1k`, `6g1FBLIexdpzXkcJ` and the last executions of Step 3. Then: locate the state loss after the §8.4a.11 W2 edit, fix, smoke with one PDF + one newsletter. Fallback per plan: move classification to `/api/openai-classify` on Sonnet 5 with a strict JSON schema. Gate G before reclassifying the 234 Review rows.
+Dumps workflow JSON for `BNBjoqXtPylHcMjs`, `CkFleWzrsKzXL5kh`, `9QKgeDSw4UXLZNcH`, `iqiNBClTdbfWCcB1`, `8sHd4N0YPG25ug1k`, `6g1FBLIexdpzXkcJ` and the last executions of Step 3. Then: locate the state loss after the §8.4a.11 W2 edit, fix, smoke with one PDF + one newsletter. Fallback per plan, PRE-BUILT 2026-09-04 while blocked: `POST /api/triage-classify` (`worker/src/lib/triage-classify.ts`, Sonnet 5, bearer auth). Input `{subject, from, to, date, message_id, body_excerpt, attachments:[{name,mime,size}]}`; output always well-formed: `classification` in ingest|review|skip|spam, `rationale`, `confidence`, `suggested_title`, `domain_primary`, `is_newsletter_digest`, plus ready-to-write `notion_title` ("<title> [triage:<class>]"), `error_message`, `stage`. Unparseable model output degrades to `review` with `degraded: true`, so it can never write `undefined`. To adopt: point Step 3's classifier step at this route (HTTP Request node with the bearer token) and map `notion_title` / `error_message` / `stage` into the existing Notion write node. Gate G before reclassifying the 234 Review rows.
 
 ## W1-C4 — archival workflow + summary mode ✅ code in PR #29; Notion mutation applied; n8n deactivation pending
 
