@@ -488,6 +488,7 @@ const API = {
   listGaps: () => API._get("/api/uc3/list-gaps"),
   listBriefsReady: () => API._get("/api/uc3/list-briefs-ready"),
   todayBriefing: () => API._get("/api/uc3/today-briefing"),
+  elevenLabsQuota: () => API._get("/api/uc3/elevenlabs-quota"),
   briefingAudioUrl: (date) => BASE + "/api/uc3/briefing-audio?date=" + encodeURIComponent(date),
   pipelineStatus: (gid) => API._get("/api/uc3/pipeline-status?gap_id=" + encodeURIComponent(gid)),
   spacedRepDue: () => API._get("/api/uc3/spaced-rep-due"),
@@ -960,6 +961,8 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
   const [articles, setArticles] = useState([]);
   // Item 2E: today's daily briefing, if generated. 404 means nothing today yet.
   const [todayBriefing, setTodayBriefing] = useState(null);
+  // W1-C2 (task #20): ElevenLabs voice budget for the home-screen banner.
+  const [quota, setQuota] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -974,7 +977,8 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
       API.listArticles({ status_filter: ["Retrieved"], sort: "priority_then_email", limit: 10 }).catch(e => ({ _err: e })),
       API.listBriefsReady().catch(e => ({ _err: e })),
       API.todayBriefing().catch(e => ({ _err: e })),
-    ]).then(([gapsRes, dueRes, articlesRes, briefsRes, briefingRes]) => {
+      API.elevenLabsQuota().catch(e => ({ _err: e })),
+    ]).then(([gapsRes, dueRes, articlesRes, briefsRes, briefingRes, quotaRes]) => {
       if (cancelled) return;
       if (gapsRes._err) { setError(gapsRes._err.message); setLoading(false); return; }
       const allGaps = (gapsRes.result && gapsRes.result.gaps) || [];
@@ -1005,6 +1009,8 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
         ? briefingRes.result
         : null;
       setTodayBriefing(briefingRow);
+      // W1-C2: quota is best-effort; a failed lookup just hides the banner.
+      setQuota(quotaRes && !quotaRes._err && quotaRes.result ? quotaRes.result : null);
       setLoading(false);
     });
     return () => { cancelled = true; };
@@ -1049,8 +1055,38 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
   const queueSec = briefSec + (due.length * 600) + (articles.length * 360);
   const queueMin = Math.round(queueSec / 60);
 
+  const quotaResetLabel = quota && quota.next_reset_unix
+    ? new Date(quota.next_reset_unix * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : null;
+  const fmtChars = (n) => (n >= 1000 ? Math.round(n / 1000) + "k" : String(n));
+
   return (
     <div className="page">
+      {/* W1-C2 (task #20): ElevenLabs voice-budget banner. Always visible when
+          the lookup works; turns red at 80% of the monthly character limit so
+          the daily cron can't silently exhaust the plan. */}
+      {quota && quota.character_limit > 0 && (
+        <div className="card" style={{ marginBottom: 12, padding: "10px 14px", background: quota.warn ? "rgba(163,45,45,.06)" : "var(--bg-sunken)", borderColor: quota.warn ? "var(--red)" : "var(--line-strong)" }}>
+          <div className="row-sub" style={quota.warn ? { color: "var(--red)" } : undefined}>
+            {quota.warn ? "⚠ " : "🔊 "}Voice budget: {quota.used_pct}% used · {fmtChars(quota.characters_remaining)} characters left
+            {quotaResetLabel ? ` · resets ${quotaResetLabel}` : ""}
+          </div>
+        </div>
+      )}
+      {/* W1-C2: the cron found nothing real overnight and spent nothing. */}
+      {todayBriefing && todayBriefing.status === "skipped" && (
+        <div className="card" style={{ marginBottom: 12, background: "var(--bg-sunken)", borderColor: "var(--line-strong)" }}>
+          <div className="row">
+            <div className="row-main">
+              <div className="row-title">🌅 No briefing today</div>
+              <div className="row-sub">Nothing new reached the corpus overnight, so no audio was generated and no voice budget was spent.</div>
+              <div style={{ marginTop: 10 }}>
+                <button className="play-btn-secondary" onClick={() => onRegenerateBriefing && onRegenerateBriefing()}>Generate anyway</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Item 2E: today's auto-assembled audio briefing — when ready, sits
           above everything else as the first thing Campbell sees in the morning.
           Three states surface distinctly (F14: never silent on failure). */}
@@ -2837,13 +2873,15 @@ function App() {
         moduleId: null,
         audioUrl: API.briefingAudioUrl(briefing.briefing_date),
         title: "Today's briefing",
-        series: new Date(briefing.briefing_date + "T00:00:00Z").toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }),
+        // W1-C2: briefing_date is a UTC calendar day; format it in UTC so the
+        // weekday doesn't slip back a day in US time zones.
+        series: new Date(briefing.briefing_date + "T00:00:00Z").toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" }),
         voiceId: briefing.voice_id,
       })}
       onRegenerateBriefing={async () => {
         showToast("Regenerating today's briefing…");
         try {
-          await API._post("/api/uc3/daily-briefing-generate", { async: true });
+          await API._post("/api/uc3/daily-briefing-generate", { async: true, force: true });
           setTimeout(() => bumpRefresh(), 1000);
         } catch (e) {
           showToast("Couldn't restart: " + e.message);
