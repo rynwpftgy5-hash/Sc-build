@@ -38,6 +38,27 @@ export function pickVoiceForPosition(position: number | null | undefined): Voice
 }
 
 /**
+ * Pick a voice for a daily briefing keyed on the briefing_date string
+ * (YYYY-MM-DD). Deterministic so a regenerated briefing for the same date
+ * keeps its voice; uniformly distributed across the pool over consecutive
+ * dates so no single voice dominates (addresses F14 / feedback #27 —
+ * Antoni-only daily briefings).
+ *
+ * Distribution: every block of VOICE_ROTATION.length dates hits each voice
+ * exactly once, well under the (1/pool_size + 0.15) ≈ 0.35 ceiling the
+ * ADR-024 rotation-bias check enforces.
+ */
+export function pickVoiceForDailyBriefing(briefing_date: string): VoiceProfile {
+	// Days since epoch from the YYYY-MM-DD string. Date.parse on a bare
+	// date is UTC-anchored in all V8/Workers runtimes, so this is stable
+	// across the cron's timezone.
+	const ms = Date.parse(briefing_date);
+	const days = Number.isFinite(ms) ? Math.floor(ms / 86_400_000) : 0;
+	const idx = ((days % VOICE_ROTATION.length) + VOICE_ROTATION.length) % VOICE_ROTATION.length;
+	return VOICE_ROTATION[idx];
+}
+
+/**
  * Resolve voice_id with cascading fallback:
  *   1. explicit override (e.g. from change_voice action)
  *   2. module's persisted voice_id
