@@ -2,6 +2,8 @@
 // Mirrors the existing handleChat pattern in src/index.ts:1045.
 
 export type AnthropicModel =
+	| "claude-opus-5"
+	| "claude-sonnet-5"
 	| "claude-opus-4-7"
 	| "claude-sonnet-4-6"
 	| "claude-sonnet-4-5"
@@ -14,6 +16,11 @@ export interface AnthropicCallInput {
 	user: string;
 	maxTokens?: number;
 	timeoutMs?: number;
+	// Structured outputs: when set, the API constrains the response to this
+	// JSON schema (output_config.format). Non-streaming path only.
+	outputSchema?: Record<string, unknown>;
+	// Thinking depth for Claude 4.6+ models (output_config.effort).
+	effort?: "low" | "medium" | "high" | "xhigh" | "max";
 }
 
 export interface AnthropicCallResult {
@@ -46,6 +53,10 @@ async function doAnthropicFetch(input: AnthropicCallInput): Promise<AnthropicCal
 		messages: [{ role: "user", content: input.user }],
 	};
 	if (input.system && input.system.trim()) reqBody.system = input.system;
+	const outputConfig: Record<string, unknown> = {};
+	if (input.outputSchema) outputConfig.format = { type: "json_schema", schema: input.outputSchema };
+	if (input.effort) outputConfig.effort = input.effort;
+	if (Object.keys(outputConfig).length > 0) reqBody.output_config = outputConfig;
 	try {
 		const resp = await fetch("https://api.anthropic.com/v1/messages", {
 			method: "POST",

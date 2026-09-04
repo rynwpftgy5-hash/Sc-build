@@ -35,6 +35,9 @@ export interface DailyBriefingEnv {
 export interface DailyBriefingResult {
 	ok: boolean;
 	briefing_date: string;
+	// W1-C2: true when nothing real came in overnight, so no script was
+	// written and no audio was rendered (no Sonnet or ElevenLabs spend).
+	skipped?: boolean;
 	audio_r2_key?: string;
 	audio_bytes?: number;
 	transcript_r2_key?: string;
@@ -76,6 +79,22 @@ async function queryNotion(dbId: string, filter: any, notionToken: string, pageS
 	return json.results || [];
 }
 
+// W1-C2 (RESTART-2026-09): only *real* corpus intake counts. The Ingestion
+// Log also carries the hourly newsletter → parking-lot extraction rows, the
+// broken triage rows titled "undefined [triage:undefined]", and the archival
+// cron's own log rows. For four months those made the briefing narrate
+// "2 new items" that were nothing. A row is real when a document actually
+// landed (Status Complete) and it is not one of the housekeeping sources.
+const NON_CORPUS_SOURCES = new Set(["spacenews-parking", "claude"]);
+const MALFORMED_TITLE = /^undefined\b/i;
+
+export function isRealIngest(r: { title: string; source: string; status: string }): boolean {
+	if (MALFORMED_TITLE.test(r.title)) return false;
+	if (r.title === "(untitled)") return false;
+	if (NON_CORPUS_SOURCES.has(r.source)) return false;
+	return r.status === "Complete";
+}
+
 async function fetchRecentIngests(notionToken: string, sinceIso: string): Promise<Array<{ title: string; source: string; status: string }>> {
 	const rows = await queryNotion(
 		INGESTION_LOG_DB_ID,
@@ -92,7 +111,7 @@ async function fetchRecentIngests(notionToken: string, sinceIso: string): Promis
 				status: notionSelectName(props["Status"]) || "",
 			};
 		})
-		.filter((r) => r.title !== "(untitled)" || r.status); // drop completely empty rows
+		.filter(isRealIngest);
 }
 
 async function fetchRecentInsights(notionToken: string, mirrorDbId: string, sinceIso: string): Promise<Array<{ claim: string; domain: string; claim_type: string }>> {
@@ -141,7 +160,7 @@ function buildSynthesisPrompt(
 	return { system, user };
 }
 
-export async function generateDailyBriefing(env: DailyBriefingEnv): Promise<DailyBriefingResult> {
+export async function generateDailyBriefing(env: DailyBriefingEnv, opts?: { force?: boolean }): Promise<DailyBriefingResult> {
 	const briefing_date = todayDateString();
 	const nowS = Math.floor(Date.now() / 1000);
 	const sinceIso = new Date(Date.now() - 86400 * 1000).toISOString();
@@ -166,6 +185,11 @@ export async function generateDailyBriefing(env: DailyBriefingEnv): Promise<Dail
 			transcript_r2_key: existing.transcript_r2_key ?? undefined,
 			voice_id: existing.voice_id ?? undefined,
 		};
+	}
+	// A 'skipped' row is final for the day unless someone explicitly asks for
+	// a regeneration (force). The cron never forces.
+	if (existing && existing.status === "skipped" && !opts?.force) {
+		return { ok: true, briefing_date, skipped: true, source_summary: { ingest_count: 0, insight_count: 0 } };
 	}
 	const STALE_GENERATING_S = 300; // 5 minutes
 	if (existing && existing.status === "generating" && (nowS - existing.generated_at) < STALE_GENERATING_S) {
@@ -200,6 +224,22 @@ export async function generateDailyBriefing(env: DailyBriefingEnv): Promise<Dail
 		const insights = env.INSIGHT_MIRROR_DB_ID
 			? await fetchRecentInsights(env.NOTION_TOKEN, env.INSIGHT_MIRROR_DB_ID, sinceInsightsIso)
 			: [];
+
+		// 2b. W1-C2: nothing real overnight → record a 'skipped' row and stop.
+		//     No script, no audio, no spend. The player shows a quiet
+		//     "nothing new overnight" line instead of a five-minute narration
+		//     of an empty day (F14: never silent, but never fake either).
+		if (ingests.length + insights.length === 0 && !opts?.force) {
+			const summary = JSON.stringify({ ingest_count: 0, insight_count: 0, skipped_reason: "no real intake in the last 24h" });
+			await env.UC3_DB
+				.prepare(
+					`UPDATE daily_briefings SET status = 'skipped', source_summary = ?, last_error = NULL, audio_r2_key = NULL, transcript_r2_key = NULL, audio_bytes = NULL
+					 WHERE briefing_date = ?`,
+				)
+				.bind(summary, briefing_date)
+				.run();
+			return { ok: true, briefing_date, skipped: true, source_summary: { ingest_count: 0, insight_count: 0 } };
+		}
 
 		// 3. Build the prompt + call Sonnet.
 		const { system, user } = buildSynthesisPrompt(ingests, insights);

@@ -488,6 +488,7 @@ const API = {
   listGaps: () => API._get("/api/uc3/list-gaps"),
   listBriefsReady: () => API._get("/api/uc3/list-briefs-ready"),
   todayBriefing: () => API._get("/api/uc3/today-briefing"),
+  elevenLabsQuota: () => API._get("/api/uc3/elevenlabs-quota"),
   briefingAudioUrl: (date) => BASE + "/api/uc3/briefing-audio?date=" + encodeURIComponent(date),
   pipelineStatus: (gid) => API._get("/api/uc3/pipeline-status?gap_id=" + encodeURIComponent(gid)),
   spacedRepDue: () => API._get("/api/uc3/spaced-rep-due"),
@@ -605,6 +606,12 @@ const timeAgo = (unix) => {
   if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
   if (diff < 86400 * 7) return Math.floor(diff / 86400) + "d ago";
   return new Date(unix * 1000).toLocaleDateString();
+}
+function briefingDateLabel(ymd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || "");
+  if (!m) return ymd || "";
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
 };
 
 // Broader pattern future-proofed against W7/W8/W9/... and other test markers.
@@ -960,6 +967,8 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
   const [articles, setArticles] = useState([]);
   // Item 2E: today's daily briefing, if generated. 404 means nothing today yet.
   const [todayBriefing, setTodayBriefing] = useState(null);
+  // W1-C2 / task #20: ElevenLabs credit; null until loaded, {level, ...} after.
+  const [ttsQuota, setTtsQuota] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -974,7 +983,9 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
       API.listArticles({ status_filter: ["Retrieved"], sort: "priority_then_email", limit: 10 }).catch(e => ({ _err: e })),
       API.listBriefsReady().catch(e => ({ _err: e })),
       API.todayBriefing().catch(e => ({ _err: e })),
-    ]).then(([gapsRes, dueRes, articlesRes, briefsRes, briefingRes]) => {
+      API.elevenLabsQuota().catch(e => ({ _err: e })),
+    ]).then(([gapsRes, dueRes, articlesRes, briefsRes, briefingRes, quotaRes]) => {
+      setTtsQuota(quotaRes && !quotaRes._err && quotaRes.result ? quotaRes.result : null);
       if (cancelled) return;
       if (gapsRes._err) { setError(gapsRes._err.message); setLoading(false); return; }
       const allGaps = (gapsRes.result && gapsRes.result.gaps) || [];
@@ -1069,6 +1080,39 @@ function HomeScreen({ refreshKey, tracked, onPlayBrief, onOpenSeries, onPlayDue,
               <div className="row-meta">Read by {voiceName(todayBriefing.voice_id)}</div>
             </div>
             <button className="play-btn" aria-label="Play today's briefing">▶</button>
+          </div>
+        </div>
+      )}
+      {/* W1-C2 / task #20: narration credit. Only shown when it is actually
+          low — a green "all fine" banner would be noise every morning. */}
+      {ttsQuota && ttsQuota.level !== "ok" && (
+        <div className="card" role="status" style={{ marginBottom: 12, background: ttsQuota.level === "critical" ? "rgba(163,45,45,.06)" : "rgba(133,79,11,.08)", borderColor: ttsQuota.level === "critical" ? "var(--red)" : "var(--accent-warm)" }}>
+          <div className="row">
+            <div className="row-main">
+              <div className="row-title" style={{ color: ttsQuota.level === "critical" ? "var(--red)" : "var(--accent-warm)" }}>
+                {ttsQuota.level === "critical" ? "⚠ Narration credit almost gone" : "⚠ Narration credit is running low"}
+              </div>
+              <div className="row-sub">
+                {Math.round(ttsQuota.remaining_characters / 1000)}k of {Math.round(ttsQuota.character_limit / 1000)}k characters left ({ttsQuota.pct_remaining}%)
+                {ttsQuota.next_reset_unix ? ` · renews ${new Date(ttsQuota.next_reset_unix * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : ""}
+              </div>
+              <div className="row-meta">Briefings and new modules stop narrating when it runs out. Top up at elevenlabs.io.</div>
+            </div>
+          </div>
+        </div>
+      )}
+      {todayBriefing && todayBriefing.status === "skipped" && (
+        <div className="card" style={{ marginBottom: 12, background: "var(--bg-sunken)", borderColor: "var(--line-strong)" }}>
+          <div className="row">
+            <div className="row-main">
+              <div className="row-title">🌅 No briefing today</div>
+              <div className="row-sub">Nothing new reached the corpus overnight, so there was nothing to narrate.</div>
+              <div style={{ marginTop: 10 }}>
+                <button className="play-btn-secondary" onClick={() => onRegenerateBriefing && onRegenerateBriefing()}>
+                  Make one anyway
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2837,7 +2881,10 @@ function App() {
         moduleId: null,
         audioUrl: API.briefingAudioUrl(briefing.briefing_date),
         title: "Today's briefing",
-        series: new Date(briefing.briefing_date + "T00:00:00Z").toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }),
+        // W1-C2: parse as a local calendar day. "YYYY-MM-DDT00:00:00Z" is UTC
+        // midnight, which is the previous evening in the Americas, so the
+        // label said "Wednesday" for Thursday's briefing.
+        series: briefingDateLabel(briefing.briefing_date),
         voiceId: briefing.voice_id,
       })}
       onRegenerateBriefing={async () => {

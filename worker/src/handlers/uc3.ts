@@ -619,16 +619,19 @@ export async function handleUc3TodayBriefing(
 // ctx.waitUntil to fire-and-forget so the HTTP request returns immediately.
 // Default is synchronous — useful for ad-hoc debugging from the desk.
 export async function handleUc3DailyBriefingGenerate(
-	body: { async?: boolean },
+	body: { async?: boolean; force?: boolean },
 	env: Uc3HandlerEnv,
 	ctx?: ExecutionContext,
 ): Promise<{ ok: boolean; status?: number; result?: unknown; error?: string }> {
+	// A manual trigger is a person asking for a briefing, so it overrides the
+	// W1-C2 skip-on-empty rule unless the caller says force:false explicitly.
+	const force = body?.force !== false;
 	if (body?.async === true) {
 		if (!ctx) {
 			// Without ctx we can't fire-and-forget safely; fall back to sync.
 		} else {
 			ctx.waitUntil(
-				generateDailyBriefing(env).catch((err) => {
+				generateDailyBriefing(env, { force }).catch((err) => {
 					console.error("daily-briefing manual-async crashed:", (err as Error).message);
 				}),
 			);
@@ -636,10 +639,101 @@ export async function handleUc3DailyBriefingGenerate(
 		}
 	}
 	try {
-		const r = await generateDailyBriefing(env);
+		const r = await generateDailyBriefing(env, { force });
 		return { ok: r.ok, status: r.ok ? 200 : 502, result: r };
 	} catch (err) {
 		return { ok: false, status: 502, error: `daily-briefing generate failed: ${(err as Error).message}` };
+	}
+}
+
+
+// W1-C2 / task #20 — GET /api/uc3/elevenlabs-quota
+// Reads the ElevenLabs subscription so the player can show a credit banner
+// before narration silently stops. ElevenLabs bills in characters per
+// billing period; `remaining_characters` is what matters to the user.
+// Cached for 10 minutes via the Cache API (best-effort) — the home screen
+// calls this on every load.
+const ELEVENLABS_SUBSCRIPTION_URL = "https://api.elevenlabs.io/v1/user/subscription";
+const ELEVENLABS_QUOTA_CACHE_SECONDS = 600;
+// Roughly one daily briefing ≈ 5,000 characters; a module ≈ 12,000.
+export const ELEVENLABS_LOW_CHARS = 60_000;
+export const ELEVENLABS_CRITICAL_CHARS = 15_000;
+
+export interface ElevenLabsQuota {
+	character_count: number;
+	character_limit: number;
+	remaining_characters: number;
+	pct_remaining: number; // 0–100
+	next_reset_unix: number | null;
+	tier: string | null;
+	status: string | null;
+	level: "ok" | "low" | "critical";
+	checked_at: string;
+}
+
+export async function handleUc3ElevenLabsQuota(
+	env: Pick<Uc3HandlerEnv, "ELEVENLABS_API_KEY">,
+): Promise<{ ok: boolean; status?: number; result?: ElevenLabsQuota; error?: string; cached?: boolean }> {
+	if (!env.ELEVENLABS_API_KEY) {
+		return { ok: false, status: 500, error: "server misconfigured: ELEVENLABS_API_KEY missing" };
+	}
+	let cache: Cache | null = null;
+	const cacheKey = new Request("https://spacesc-mcp.internal/elevenlabs-quota");
+	try {
+		cache = (caches as unknown as { default: Cache }).default;
+		const hit = cache ? await cache.match(cacheKey) : null;
+		if (hit) return { ok: true, status: 200, result: (await hit.json()) as ElevenLabsQuota, cached: true };
+	} catch {
+		cache = null;
+	}
+	try {
+		const resp = await fetch(ELEVENLABS_SUBSCRIPTION_URL, {
+			headers: { "xi-api-key": env.ELEVENLABS_API_KEY },
+			signal: AbortSignal.timeout(15_000),
+		});
+		if (!resp.ok) {
+			const detail = (await resp.text()).slice(0, 300);
+			return { ok: false, status: resp.status === 401 ? 502 : 502, error: `ElevenLabs subscription ${resp.status}: ${detail}` };
+		}
+		const j = (await resp.json()) as {
+			character_count?: number;
+			character_limit?: number;
+			next_character_count_reset_unix?: number | null;
+			tier?: string;
+			status?: string;
+		};
+		const used = Number(j.character_count ?? 0);
+		const limit = Number(j.character_limit ?? 0);
+		const remaining = Math.max(0, limit - used);
+		const pct = limit > 0 ? Math.round((remaining / limit) * 1000) / 10 : 0;
+		const level: ElevenLabsQuota["level"] =
+			remaining <= ELEVENLABS_CRITICAL_CHARS ? "critical" : remaining <= ELEVENLABS_LOW_CHARS ? "low" : "ok";
+		const result: ElevenLabsQuota = {
+			character_count: used,
+			character_limit: limit,
+			remaining_characters: remaining,
+			pct_remaining: pct,
+			next_reset_unix: j.next_character_count_reset_unix ?? null,
+			tier: j.tier ?? null,
+			status: j.status ?? null,
+			level,
+			checked_at: new Date().toISOString(),
+		};
+		if (cache) {
+			try {
+				await cache.put(
+					cacheKey,
+					new Response(JSON.stringify(result), {
+						headers: { "Content-Type": "application/json", "Cache-Control": `max-age=${ELEVENLABS_QUOTA_CACHE_SECONDS}` },
+					}),
+				);
+			} catch {
+				/* best-effort */
+			}
+		}
+		return { ok: true, status: 200, result };
+	} catch (err) {
+		return { ok: false, status: 502, error: `elevenlabs-quota failed: ${(err as Error).message}` };
 	}
 }
 
