@@ -2,6 +2,8 @@
 // Mirrors the existing handleChat pattern in src/index.ts:1045.
 
 export type AnthropicModel =
+	| "claude-sonnet-5"
+	| "claude-opus-5"
 	| "claude-opus-4-7"
 	| "claude-sonnet-4-6"
 	| "claude-sonnet-4-5"

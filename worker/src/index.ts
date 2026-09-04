@@ -43,6 +43,7 @@ import {
 } from "./handlers/feedback";
 import { listFeedback } from "./lib/feedback";
 import { listBlindspots, resolveBlindspot } from "./lib/blindspot-analyzer";
+import { classifyEmailForTriage } from "./lib/triage-classify";
 import {
 	handleUc3PipelineRun,
 	handleUc3PipelineCancel,
@@ -2770,6 +2771,14 @@ async function handleApiRoute(
 			const errStatus = (result as { status?: number }).status;
 			return jsonResponse(result.ok === false ? (errStatus || 502) : 200, result);
 		}
+		// RESTART-2026-09 W1-C3 fallback: Worker-side Step 3 email triage on
+		// Sonnet with a strict JSON contract. n8n calls this instead of its own
+		// classifier node once the state-loss bug is confirmed unfixable in-sandbox.
+		case "/api/triage-classify": {
+			const result = await classifyEmailForTriage(body || {}, env);
+			const errStatus = (result as { status?: number }).status;
+			return jsonResponse(result.ok === false ? (errStatus || 502) : 200, result);
+		}
 		case "/api/chat": {
 			const result = await handleChat(body || {}, env);
 			const errStatus = (result as { status?: number }).status;
@@ -3217,7 +3226,7 @@ export default {
 		// text with a 200, which made typos and dead links look healthy).
 		if (url.pathname === "/" || url.pathname === "") {
 			return new Response(
-				"SpaceSC MCP server. Endpoints: /mcp (Streamable HTTP), /sse (legacy), /api/{query,capture,search,approve,ingest-log,article,parking-lot-update,parking-lot-list,openai-classify,chat,rn-capture,gap-capture,log-append,project-log-recent,oq-create,link-source,openai-parse-rn,tts,tts-chunked} (POST, bearer auth), /api/tts-cache/{page_id} (GET/PUT, bearer auth), /api/uc3/{pipeline-run (POST), pipeline-cancel (DELETE), pipeline-status (GET), module-revise (POST), module-brief (POST), module-feedback (POST), module-tts (POST), module-errata-create (POST), module-errata-list (GET), spaced-rep-due (GET), spaced-rep-mark-listened (POST), elevenlabs-quota (GET)} (bearer auth), /api/uc3/{brief-audio,module-audio} (GET, public), /uc3 (UC3 Commute Player standalone, public). MCP tools: query_corpus, capture_insight, search_insights, approve_insight, search_modules. Queue consumer: uc3-s5-section-drafting.",
+				"SpaceSC MCP server. Endpoints: /mcp (Streamable HTTP), /sse (legacy), /api/{query,capture,search,approve,ingest-log,article,parking-lot-update,parking-lot-list,openai-classify,chat,rn-capture,gap-capture,log-append,project-log-recent,oq-create,link-source,openai-parse-rn,triage-classify,tts,tts-chunked} (POST, bearer auth), /api/tts-cache/{page_id} (GET/PUT, bearer auth), /api/uc3/{pipeline-run (POST), pipeline-cancel (DELETE), pipeline-status (GET), module-revise (POST), module-brief (POST), module-feedback (POST), module-tts (POST), module-errata-create (POST), module-errata-list (GET), spaced-rep-due (GET), spaced-rep-mark-listened (POST), elevenlabs-quota (GET)} (bearer auth), /api/uc3/{brief-audio,module-audio} (GET, public), /uc3 (UC3 Commute Player standalone, public). MCP tools: query_corpus, capture_insight, search_insights, approve_insight, search_modules. Queue consumer: uc3-s5-section-drafting.",
 				{ status: 200 },
 			);
 		}
