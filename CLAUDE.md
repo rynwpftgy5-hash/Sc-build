@@ -19,14 +19,15 @@ standalones) are correct here even when they would be wrong for a product.
 
 ## What (project map)
 
-- `worker/` — Cloudflare Worker source (spacesc-mcp). Forthcoming.
-- `.claude/skills/` — Claude Code skills (spacesc-insight-ledger, bulk-loader,
-  and others). Forthcoming when the Mac-side push lands.
-- `standalones/` — UC1 / UC2 / UC3 standalone HTML surfaces, i.e.
-  use-case-specific pedagogical artifacts published as self-contained
-  pages. Forthcoming.
+- `worker/` — Cloudflare Worker source (spacesc-mcp): MCP server, REST API,
+  hosted surfaces, D1 migrations, Queue consumers, Workflow, prompts.
+- `.claude/skills/` — index only (`SKILLS.md`). The skills themselves
+  (spacesc-insight-ledger, bulk-loader, reconciliation, and others) live in
+  `~/.claude/skills/` on Campbell's Mac; see SKILLS.md for the roster.
+- `standalones/` — never created. The UC1/UC2/UC3 surfaces are served by
+  the Worker (`/desk`, `/corpus`, `/uc3`, …) from `worker/src/assets/`.
 - `docs/` — architecture documentation, design notes, and reference
-  material kept inside the repo.
+  material kept inside the repo. `docs/surveys/` holds system surveys.
 - `docs/adr/` — Architecture Decision Records. The §8.4a.* dispatch
   series is archived here as immutable ADRs (one dispatch → one ADR).
 

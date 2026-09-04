@@ -16,12 +16,9 @@ intersection of policy, economics, and technology in space security cooperation.
 
 ## Project structure
 
-Forthcoming as content lands:
-
-- `worker/` — Cloudflare Worker source
-- `.claude/skills/` — Claude Code skills
-- `standalones/` — standalone HTML surfaces (UC1, UC2, UC3)
-- `docs/` — architecture documentation
+- `worker/` — Cloudflare Worker source (MCP server, REST API, hosted surfaces, D1 migrations)
+- `.claude/skills/` — skills index; the skills run from `~/.claude/skills/` on the maintainer's Mac
+- `docs/` — architecture documentation and system surveys (`docs/surveys/`)
 - `docs/adr/` — Architecture Decision Records
 
 ## Orientation

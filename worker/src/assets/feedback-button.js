@@ -20,7 +20,6 @@
   const BASE = window.SPACESC_WORKER_BASE || "https://spacesc-mcp.75xnd2784n.workers.dev";
   const TOKEN_KEYS = ["spacesc_mcp_token", "spacesc_token", "spacesc_player_token"];
   const PENDING_KEY = "spacesc_pending_feedback";
-  const TOKEN_TTL_DAYS = 60;
 
   // -- Token retrieval (matches existing /uc3 + /desk surfaces) --
   function getToken() {
@@ -141,6 +140,8 @@
   // -- Voice recording (optional path) --
   let mediaRecorder = null;
   let recordedChunks = [];
+  // Scaffold for §8.4a.25.1 (whisper path); intentionally unused until wired.
+  // oxlint-disable-next-line no-unused-vars
   async function startVoice() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       throw new Error("microphone not supported in this browser");
@@ -151,6 +152,7 @@
     mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
     mediaRecorder.start();
   }
+  // oxlint-disable-next-line no-unused-vars
   function stopVoice() {
     return new Promise((resolve, reject) => {
       if (!mediaRecorder) return reject(new Error("not recording"));
