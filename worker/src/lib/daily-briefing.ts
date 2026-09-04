@@ -8,7 +8,8 @@
 //
 // Pattern mirrors module-audio.ts:
 //   - One D1 row per briefing (UNIQUE on briefing_date)
-//   - Status flips generating → ready on success, generating → failed on error
+//   - Status flips generating → ready on success, generating → failed on error,
+//     generating → skipped when there was nothing real to narrate (W1-C2)
 //   - audio_r2_key + transcript_r2_key + audio_bytes for player consumption
 //   - last_error populated on failure so the UI can surface it (F14 lesson)
 
@@ -39,8 +40,29 @@ export interface DailyBriefingResult {
 	audio_bytes?: number;
 	transcript_r2_key?: string;
 	voice_id?: string;
-	source_summary?: { ingest_count: number; insight_count: number };
+	source_summary?: { ingest_count: number; insight_count: number; raw_ingest_rows?: number };
+	/** RESTART-2026-09 W1-C2: true when generation was skipped because nothing real came in. */
+	skipped?: boolean;
 	error?: string;
+}
+
+export interface DailyBriefingOptions {
+	/** Bypass the W1-C2 zero-material skip (manual "generate anyway" from the player). */
+	force?: boolean;
+}
+
+// W1-C2 — what counts as a *real* ingest for briefing purposes. The hourly
+// Step 3 triage branch has been writing rows titled "undefined [triage:undefined]"
+// (Status=Review, no doc_id) since 2026-05-04, and the §8.4a.6 archival cron
+// writes "PROJECT_LOG archival …" rows with Status=Complete. Neither is new
+// material. A real ingest is a row that reached the corpus: Status=Complete
+// with a doc_id, and a title that isn't the literal "undefined".
+const REAL_INGEST_STATUSES = new Set(["Complete"]);
+function isRealIngest(r: { title: string; status: string; doc_id: string }): boolean {
+	if (!REAL_INGEST_STATUSES.has(r.status)) return false;
+	if (!r.doc_id) return false;
+	if (/^undefined\b/i.test(r.title) || r.title === "(untitled)") return false;
+	return true;
 }
 
 function todayDateString(): string {
@@ -76,7 +98,7 @@ async function queryNotion(dbId: string, filter: any, notionToken: string, pageS
 	return json.results || [];
 }
 
-async function fetchRecentIngests(notionToken: string, sinceIso: string): Promise<Array<{ title: string; source: string; status: string }>> {
+async function fetchRecentIngests(notionToken: string, sinceIso: string): Promise<Array<{ title: string; source: string; status: string; doc_id: string }>> {
 	const rows = await queryNotion(
 		INGESTION_LOG_DB_ID,
 		{ timestamp: "created_time", created_time: { on_or_after: sinceIso } },
@@ -90,6 +112,7 @@ async function fetchRecentIngests(notionToken: string, sinceIso: string): Promis
 				title: notionPlainTitle(props["Title"]) || notionPlainTitle(props["Name"]) || "(untitled)",
 				source: notionSelectName(props["Source"]) || notionPlainTitle(props["Source"]) || "",
 				status: notionSelectName(props["Status"]) || "",
+				doc_id: notionPlainTitle(props["doc_id"]),
 			};
 		})
 		.filter((r) => r.title !== "(untitled)" || r.status); // drop completely empty rows
@@ -141,7 +164,7 @@ function buildSynthesisPrompt(
 	return { system, user };
 }
 
-export async function generateDailyBriefing(env: DailyBriefingEnv): Promise<DailyBriefingResult> {
+export async function generateDailyBriefing(env: DailyBriefingEnv, opts: DailyBriefingOptions = {}): Promise<DailyBriefingResult> {
 	const briefing_date = todayDateString();
 	const nowS = Math.floor(Date.now() / 1000);
 	const sinceIso = new Date(Date.now() - 86400 * 1000).toISOString();
@@ -157,6 +180,10 @@ export async function generateDailyBriefing(env: DailyBriefingEnv): Promise<Dail
 		.bind(briefing_date)
 		.first<{ id: number; status: string; audio_r2_key: string | null; transcript_r2_key: string | null; audio_bytes: number | null; voice_id: string | null; generated_at: number }>();
 
+	if (existing && existing.status === "skipped" && !opts.force) {
+		// W1-C2: already decided today that there was nothing to narrate.
+		return { ok: true, briefing_date, skipped: true, source_summary: { ingest_count: 0, insight_count: 0 } };
+	}
 	if (existing && existing.status === "ready" && existing.audio_r2_key) {
 		return {
 			ok: true,
@@ -195,11 +222,28 @@ export async function generateDailyBriefing(env: DailyBriefingEnv): Promise<Dail
 
 	try {
 		// 2. Pull source material from Notion (cloud-only, no Mac dependency).
-		const ingests = await fetchRecentIngests(env.NOTION_TOKEN, sinceIso);
+		const rawIngests = await fetchRecentIngests(env.NOTION_TOKEN, sinceIso);
+		const ingests = rawIngests.filter(isRealIngest);
 		const sinceInsightsIso = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
 		const insights = env.INSIGHT_MIRROR_DB_ID
 			? await fetchRecentInsights(env.NOTION_TOKEN, env.INSIGHT_MIRROR_DB_ID, sinceInsightsIso)
 			: [];
+
+		// 2b. W1-C2 — nothing real came in: do not spend Sonnet + ElevenLabs
+		// narrating an empty day. Record the decision so the player can show
+		// "no briefing today" instead of a silent gap (F14 lesson), and so the
+		// cron doesn't re-evaluate on retry.
+		if (!opts.force && ingests.length + insights.length === 0) {
+			const source_summary = { ingest_count: 0, insight_count: 0, raw_ingest_rows: rawIngests.length };
+			await env.UC3_DB
+				.prepare(
+					`UPDATE daily_briefings SET status = 'skipped', source_summary = ?, last_error = NULL WHERE briefing_date = ?`,
+				)
+				.bind(JSON.stringify(source_summary), briefing_date)
+				.run();
+			console.log(`daily-briefing ${briefing_date} skipped: 0 real ingests (${rawIngests.length} raw rows), 0 insights`);
+			return { ok: true, briefing_date, skipped: true, source_summary };
+		}
 
 		// 3. Build the prompt + call Sonnet.
 		const { system, user } = buildSynthesisPrompt(ingests, insights);
@@ -243,7 +287,7 @@ export async function generateDailyBriefing(env: DailyBriefingEnv): Promise<Dail
 		await env.TTS_CACHE.put(audio_r2_key, tts.buf, { httpMetadata: { contentType: "audio/mpeg" } });
 
 		const audio_bytes = tts.buf.byteLength;
-		const source_summary = JSON.stringify({ ingest_count: ingests.length, insight_count: insights.length });
+		const source_summary = JSON.stringify({ ingest_count: ingests.length, insight_count: insights.length, raw_ingest_rows: rawIngests.length });
 
 		// 6. Flip row to 'ready'.
 		await env.UC3_DB
@@ -261,7 +305,7 @@ export async function generateDailyBriefing(env: DailyBriefingEnv): Promise<Dail
 			audio_bytes,
 			transcript_r2_key,
 			voice_id,
-			source_summary: { ingest_count: ingests.length, insight_count: insights.length },
+			source_summary: { ingest_count: ingests.length, insight_count: insights.length, raw_ingest_rows: rawIngests.length },
 		};
 	} catch (err) {
 		const rawText = (err as Error).message;
